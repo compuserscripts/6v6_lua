@@ -1,6 +1,6 @@
 
 --autoexec.lua
---place in C:\%userprofile%\AppData\Local
+--place in C:\Users\%username%\AppData\Local
 local path = os.getenv('localappdata')
 --LoadScript(path .. [[\ammo.lua ]])
 LoadScript(path .. [[\anti_air.lua ]])
