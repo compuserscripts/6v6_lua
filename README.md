@@ -11,8 +11,6 @@ autoexec.lua will automatically load all scripts specified in the file
 
 TODO;
 
-medic mode for esp - see teammate health instead of enemy when playing medic
-
 ubercounter modification - ignoring kritz - calculate fake uber in place for kritz when enabled - make it possible to customize everything easily, position, text size etc etc etc
 option to add slight randomness to uber percentage
 
