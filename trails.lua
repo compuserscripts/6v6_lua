@@ -31,6 +31,7 @@ local playerData = {}
 local lastUpdateTick = 0
 local currentMap = ""
 local scriptActive = false
+local lastLifeState = 2  -- Track respawn state (2 = dead)
 
 -- Pre-calculate trail height offset
 local trailHeightUnits = math.min(5, math.max(0, trail_height)) * 20
@@ -52,6 +53,14 @@ local function generateColor(steamID)
     
     colorCache[steamID] = {r, g, b}
     return colorCache[steamID]
+end
+
+-- Clear data function
+local function ClearData()
+    playerData = {}
+    nextVisCheck = {}
+    visibilityCache = {}
+    lastUpdateTick = 0
 end
 
 -- Optimized visibility check with caching
@@ -99,10 +108,7 @@ local function IsInvisibleOrDisguisedSpy(player)
 end
 
 local function ResetScript()
-    playerData = {}
-    nextVisCheck = {}
-    visibilityCache = {}
-    lastUpdateTick = 0
+    ClearData()
     scriptActive = true
 end
 
@@ -145,6 +151,13 @@ local function aUpdate()
     
     local localPlayer = entities.GetLocalPlayer()
     if not localPlayer then return end
+
+    -- Check for respawn
+    local currentLifeState = localPlayer:GetPropInt("m_lifeState")
+    if lastLifeState == 2 and currentLifeState == 0 then  -- Player respawned
+        ClearData()
+    end
+    lastLifeState = currentLifeState
 
     local localPos = localPlayer:GetAbsOrigin()
     local currentTick = globals.TickCount()
@@ -228,18 +241,24 @@ local function aDraw()
                 
                 if alpha <= 0 then break end
                 
+                -- Set color for each line segment with proper alpha
                 draw.Color(color[1], color[2], color[3], alpha)
+                
                 local startPos = client.WorldToScreen(data.positions[i])
                 local endPos = client.WorldToScreen(data.positions[i + 1])
                 
+                -- Additional check to ensure both positions are valid
                 if startPos and endPos then
-                    --C:\Users\User\AppData\Local\trails.lua:236: Color not set, set it using draw.Color
-                    draw.Line(
-                        floor(startPos[1]),
-                        floor(startPos[2]),
-                        floor(endPos[1]),
-                        floor(endPos[2])
-                    )
+                    local x1, y1 = floor(startPos[1]), floor(startPos[2])
+                    local x2, y2 = floor(endPos[1]), floor(endPos[2])
+                    
+                    -- Set color again before drawing line to ensure it's correct
+                    draw.Color(color[1], color[2], color[3], alpha)
+                    
+                    -- Additional validation before drawing
+                    if x1 and y1 and x2 and y2 then
+                        draw.Line(x1, y1, x2, y2)
+                    end
                 end
             end
         end
