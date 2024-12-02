@@ -38,10 +38,23 @@ local chamsMaterial = materials.Create("soldier_chams", [[
     }
 ]])
 
+-- Track respawn state
+local lastLifeState = 2  -- Start with LIFE_DEAD (2)
+
 -- Main drawing function
 local function OnDraw()
     local localPlayer = entities.GetLocalPlayer()
     if not localPlayer then return end
+    
+    -- Check if player just respawned by tracking life state changes
+    local currentLifeState = localPlayer:GetPropInt("m_lifeState")
+    if lastLifeState == 2 and currentLifeState == 0 then  -- If we went from dead to alive
+        -- Reset any persistent materials or effects here if needed
+        if chamsMaterial then
+            chamsMaterial:SetMaterialVarFlag(MATERIAL_VAR_IGNOREZ, false)
+        end
+    end
+    lastLifeState = currentLifeState
 
     local players = entities.FindByClass("CTFPlayer")
     local screenW, screenH = GetScreenSize()
