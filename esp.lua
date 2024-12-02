@@ -2,6 +2,7 @@ local ALPHA = 70
 local BAR_HEIGHT = 10
 local OVERHEAL_COLOR = {71, 166, 255}
 local MAX_DISTANCE_SQR = 3500 * 3500
+local SHOW_TEAMMATE_HEALTH = true -- Toggle for showing teammate health bars when playing medic
 
 local function Get2DBoundingBox(entity)
     local hitbox = entity:HitboxSurroundingBox()
@@ -48,7 +49,11 @@ local function GetHealthBarColor(health, maxHealth)
     end
 end
 
-callbacks.Register("Draw", "EnemyHealthBarESP", function()
+local function IsMedic(player)
+    return player:GetPropInt("m_iClass") == 5
+end
+
+callbacks.Register("Draw", "HealthBarESP", function()
     if engine.Con_IsVisible() or engine.IsGameUIVisible() then return end
 
     local localPlayer = entities.GetLocalPlayer()
@@ -57,10 +62,15 @@ callbacks.Register("Draw", "EnemyHealthBarESP", function()
     local localPos = localPlayer:GetAbsOrigin()
     if not localPos then return end
 
+    local isLocalPlayerMedic = IsMedic(localPlayer)
+    local showTeammates = SHOW_TEAMMATE_HEALTH and isLocalPlayerMedic
+
     local players = entities.FindByClass("CTFPlayer")
     for _, player in pairs(players) do
         if player:IsAlive() and not player:IsDormant() and player ~= localPlayer and
-           player:GetTeamNumber() ~= localPlayer:GetTeamNumber() and not player:InCond(4) then
+           (showTeammates and player:GetTeamNumber() == localPlayer:GetTeamNumber() or
+           not showTeammates and player:GetTeamNumber() ~= localPlayer:GetTeamNumber()) and 
+           not player:InCond(4) then
 
             local playerPos = player:GetAbsOrigin()
             if not playerPos then goto continue end
@@ -71,9 +81,12 @@ callbacks.Register("Draw", "EnemyHealthBarESP", function()
             local distSqr = dx * dx + dy * dy + dz * dz
             if distSqr > MAX_DISTANCE_SQR then goto continue end
 
+            -- Only do visibility check when showing enemy health bars
             local eyePos = localPos + localPlayer:GetPropVector("localdata", "m_vecViewOffset[0]")
-            local trace = engine.TraceLine(eyePos, playerPos, MASK_VISIBLE)
-            if trace.entity ~= player then goto continue end
+            if not showTeammates then
+                local trace = engine.TraceLine(eyePos, playerPos, MASK_VISIBLE)
+                if trace.entity ~= player then goto continue end
+            end
 
             local x, y, x2, y2 = Get2DBoundingBox(player)
             if x then
