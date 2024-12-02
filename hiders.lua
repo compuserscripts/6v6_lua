@@ -1,7 +1,7 @@
 -- Configuration
 local CONFIG = {
     showBoxes = true,
-    showTracers = true,
+    showTracers = false,
     boxColor = {255, 165, 0, 255},  -- Orange for hiders
     tracerColor = {0, 0, 255, 255}, -- Blue for tracers
     timeToMarkAsHider = 5.5,  -- Seconds player must remain stationary
