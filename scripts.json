@@ -1,0 +1,100 @@
+{
+  "repository": {
+    "name": "Comp Scripts",
+    "description": "Lua for legit assistance",
+    "last_updated": "2024-12-04",
+    "author": "compuserscripts"
+  },
+  "scripts": [
+    {
+      "name": "Ammo timer",
+      "author": "compuserscripts",
+      "version": "1.0",
+      "description": "Display a timer under map health/ammo packs",
+      "filename": "ammo.lua",
+      "tags": ["misc", "visual"],
+      "dependencies": [],
+      "last_updated": "2024-10-31"
+    },
+    {
+      "name": "Anti-air",
+      "author": "compuserscripts",
+      "version": "1.0", 
+      "description": "ESP for bombing soldiers",
+      "filename": "anti_air.lua",
+      "tags": ["esp", "visuals", "6v6", "comp"],
+      "dependencies": [],
+      "last_updated": "2024-12-02"
+    },
+    {
+      "name": "Visible-only ESP",
+      "author": "compuserscripts",
+      "version": "2.0", 
+      "description": "ESP for displaying enemy health only when they are visible. Also comes with medic mode where you can see teammate health through walls",
+      "filename": "esp.lua",
+      "tags": ["esp", "visuals", "6v6", "comp"],
+      "dependencies": [],
+      "last_updated": "2024-12-02"
+    },
+    {
+      "name": "Focus fire indicator",
+      "author": "compuserscripts",
+      "version": "1.0", 
+      "description": "Draws chams on a player who is being shot by more than one player",
+      "filename": "focusfire.lua",
+      "tags": ["esp", "visuals", "6v6", "comp"],
+      "dependencies": [],
+      "last_updated": "2024-12-04"
+    },
+    {
+      "name": "Hider detector",
+      "author": "compuserscripts",
+      "version": "1.0", 
+      "description": "Detects hiding players and draws a box on them if they haven't moved for a certain amount of time",
+      "filename": "hiders.lua",
+      "tags": ["esp", "visuals", "6v6", "comp"],
+      "dependencies": [],
+      "last_updated": "2024-12-02"
+    },
+    {
+      "name": "Medic pylon",
+      "author": "compuserscripts",
+      "version": "1.4", 
+      "description": "Draws a red pylon that extends from behind objects so you will always find medic",
+      "filename": "pylon.lua",
+      "tags": ["esp", "visuals", "6v6", "comp"],
+      "dependencies": [],
+      "last_updated": "2024-10-31"
+    },
+    {
+      "name": "Stickybomb ESP",
+      "author": "compuserscripts",
+      "version": "2.0", 
+      "description": "Configurable stickybomb ESP",
+      "filename": "sticky.lua",
+      "tags": ["esp", "visuals", "6v6", "comp"],
+      "dependencies": [],
+      "last_updated": "2024-10-31"
+    },
+    {
+      "name": "Trails",
+      "author": "compuserscripts",
+      "version": "3.0", 
+      "description": "Display trails through walls for players to guide players to last known spots",
+      "filename": "trails.lua",
+      "tags": ["esp", "visuals", "6v6", "comp"],
+      "dependencies": [],
+      "last_updated": "2024-12-02"
+    },
+    {
+      "name": "Uber counter",
+      "author": "compuserscripts",
+      "version": "1.0", 
+      "description": "Advanced uber counter for competitive play",
+      "filename": "uber.lua",
+      "tags": ["esp", "visuals", "6v6", "comp"],
+      "dependencies": [],
+      "last_updated": "2024-12-02"
+    }
+  ]
+}
