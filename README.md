@@ -31,3 +31,11 @@ esp lasso - same as anti air but for all classes, able to specify different colo
 matchhud enemy hp
 
 draw a circle on the spot on the ground where airborne player lands
+
+projected player path arrow curve
+
+prevent shooting/mouse1 if health low enough to explode from rocket if soldier
+
+freecam spectate every player not teammate warp?
+
+modify focused chams to be green
