@@ -95,6 +95,16 @@
       "tags": ["esp", "visuals", "6v6", "comp"],
       "dependencies": [],
       "last_updated": "2024-12-02"
+    },
+    {
+      "name": "Arrow hit indicator",
+      "author": "compuserscripts",
+      "version": "1.0", 
+      "description": "Shows which player gets healed by an arrow and arrow trail",
+      "filename": "arrow.lua",
+      "tags": ["esp", "visuals", "6v6", "comp"],
+      "dependencies": [],
+      "last_updated": "2024-10-25"
     }
   ]
 }
