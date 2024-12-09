@@ -40,7 +40,7 @@ freecam spectate every player not teammate warp?
 
 modify focused chams to be green
 
-
+indicator where rocket/grenade will land - with seconds remaining
 
 ue (field '?')
 C:\Users\User\AppData\Local\uber.lua :402: attempt to index a nil value (field '?')
