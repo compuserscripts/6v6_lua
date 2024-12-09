@@ -48,3 +48,5 @@ C:\Users\User\AppData\Local\uber.lua :402: attempt to index a nil value (field '
 C:\Users\User\AppData\Local\uber.lua :402: attempt to index a nil value (field '?')
 C:\Users\User\AppData\Local\uber.lua :402: attempt to index a nil value (field '?')
 C:\Users\User\AppData\Local\uber.lua :402: attempt to index a nil value 
+
+autosap
