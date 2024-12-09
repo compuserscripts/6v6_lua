@@ -39,3 +39,12 @@ prevent shooting/mouse1 if health low enough to explode from rocket if soldier -
 freecam spectate every player not teammate warp?
 
 modify focused chams to be green
+
+
+
+ue (field '?')
+C:\Users\User\AppData\Local\uber.lua :402: attempt to index a nil value (field '?')
+C:\Users\User\AppData\Local\uber.lua :402: attempt to index a nil value (field '?')
+C:\Users\User\AppData\Local\uber.lua :402: attempt to index a nil value (field '?')
+C:\Users\User\AppData\Local\uber.lua :402: attempt to index a nil value (field '?')
+C:\Users\User\AppData\Local\uber.lua :402: attempt to index a nil value 
