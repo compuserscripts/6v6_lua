@@ -36,8 +36,6 @@ projected player path arrow curve
 
 prevent shooting/mouse1 if health low enough to explode from rocket if soldier - only if lookling at a wall. Also make it so that if in the face of a player and low health we negate expld dmg by activating jump before shooting - millisecond delay too so its random
 
-freecam spectate every player not teammate warp?
-
 modify focused chams to be green
 
 indicator where rocket/grenade will land - with seconds remaining
