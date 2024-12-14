@@ -54,3 +54,5 @@ autosap
 spy detector, if within certain radius change color to rainbow or something to indicate they decloaked, but only if within certain radius
 
 fix med arrow line to go from eyeangles to where its fired to instead of legs
+
+nohats misc mod
