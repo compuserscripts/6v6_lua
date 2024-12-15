@@ -6,12 +6,12 @@ local settings = {
 }
 
 -- Invisible material for hiding models
-local invisibleMaterial = nil
+local invismat = nil
 
 -- Initialize invisible material
 local function InitMaterial()
-    if not invisibleMaterial then
-        invisibleMaterial = materials.Create("invisible_cosmetics", [[
+    if not invismat then
+        invismat = materials.Create("invisible_cosmetics", [[
             VertexLitGeneric
             {
                 $basetexture    "vgui/white"
@@ -64,7 +64,7 @@ end
 
 -- Main DrawModel callback
 callbacks.Register("DrawModel", function(ctx)
-    if not invisibleMaterial then
+    if not invismat then
         InitMaterial()
         return
     end
@@ -74,11 +74,11 @@ callbacks.Register("DrawModel", function(ctx)
     
     -- Check if entity is a cosmetic and attached to a player
     if IsCosmetic(entity) and IsAttachedToPlayer(entity) then
-        ctx:ForcedMaterialOverride(invisibleMaterial)
+        ctx:ForcedMaterialOverride(invismat)
     end
 end)
 
 -- Cleanup on script unload
 callbacks.Register("Unload", function()
-    invisibleMaterial = nil
+    invismat = nil
 end)
