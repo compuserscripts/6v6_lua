@@ -1,13 +1,7 @@
 -- Configuration
-local friendly_color = {0, 255, 255, 185} -- Cyan color for friendly heal beams
-local enemy_color = {255, 50, 50, 185} -- Red color for enemy heal beams
-local enemy_only = false -- Set to true to only show enemy medics
+local heal_beam_color = {0, 255, 255, 255} -- Light blue color for heal beams
 local max_distance = 2000 -- Maximum distance to draw heal beams
 local visible_only = true -- Only show heal beams for visible players
-
--- Team numbers in TF2
-local TEAM_RED = 2
-local TEAM_BLUE = 3
 
 -- Medigun class ID for TF2
 local MEDIGUN_CLASS = "CWeaponMedigun"
@@ -32,14 +26,11 @@ local function DrawHealLine()
     -- Find all medics
     local players = entities.FindByClass("CTFPlayer")
     for _, player in pairs(players) do
-        -- Check if player is valid and alive
-        if not player:IsValid() or not player:IsAlive() then 
+        -- Check if player is valid, alive, and on enemy team
+        if not player:IsValid() or 
+           not player:IsAlive() or 
+           player:GetTeamNumber() == localPlayer:GetTeamNumber() then 
             goto continue 
-        end
-        
-        -- Skip if enemy_only is true and this is a friendly medic
-        if enemy_only and player:GetTeamNumber() == localPlayer:GetTeamNumber() then
-            goto continue
         end
         
         -- Check if player is too far away
@@ -81,12 +72,7 @@ local function DrawHealLine()
         
         -- Draw line if both positions are on screen
         if medicScreen and targetScreen then
-            -- Select color based on if medic is on our team
-            local color = (player:GetTeamNumber() == localPlayer:GetTeamNumber()) 
-                and friendly_color 
-                or enemy_color
-                
-            draw.Color(table.unpack(color))
+            draw.Color(table.unpack(heal_beam_color))
             draw.Line(medicScreen[1], medicScreen[2], targetScreen[1], targetScreen[2])
         end
         
