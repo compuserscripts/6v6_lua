@@ -5,7 +5,8 @@ local CONFIG = {
     boxColor = {255, 165, 0, 255},  -- Orange for hiders
     tracerColor = {0, 0, 255, 255}, -- Blue for tracers
     timeToMarkAsHider = 5.5,  -- Seconds player must remain stationary
-    updatePositionThreshold = 2.0  -- Units player must move to be considered "moving"
+    updatePositionThreshold = 2.0,  -- Units player must move to be considered "moving"
+    maxDistance = 1200  -- Maximum distance to check for hiders (hammer units)
 }
 
 -- Player tracking data
@@ -34,6 +35,16 @@ end
 -- Reset all tracking data
 local function ResetPlayerData()
     playerData = {}
+end
+
+-- Check if player is within valid range
+local function IsPlayerInRange(player, localPlayer)
+    if not player or not localPlayer then return false end
+    
+    local playerPos = player:GetAbsOrigin()
+    local localPos = localPlayer:GetAbsOrigin()
+    
+    return DistanceBetweenVectors(playerPos, localPos) <= CONFIG.maxDistance
 end
 
 -- Update player data
@@ -81,7 +92,10 @@ local function OnDraw()
     local centerX, centerY = floor(screenW / 2), floor(screenH / 2)
     
     for _, player in pairs(players) do
-        if player:IsAlive() and player:GetTeamNumber() ~= localPlayer:GetTeamNumber() then
+        if player:IsAlive() and 
+           player:GetTeamNumber() ~= localPlayer:GetTeamNumber() and
+           IsPlayerInRange(player, localPlayer) then
+            
             UpdatePlayerData(player)
             
             local data = playerData[player:GetIndex()]
