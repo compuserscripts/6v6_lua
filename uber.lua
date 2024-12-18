@@ -383,73 +383,105 @@ local function onDraw()
 
     -- Draw advantage text only if we have medics on both teams
     if CONFIG.advantageText.enabled then
-        -- First verify we have valid medic data
-        local redMedic = medics[2][1]
-        local bluMedic = medics[3][1]
+        -- First safely check if we have valid medics array
+        local redMedics = medics[2]
+        local bluMedics = medics[3]
         
-        if redMedic and bluMedic then -- Only proceed if we have both medics
-            local redUber = redMedic.isAlive and redMedic.uber or 0
-            local bluUber = bluMedic.isAlive and bluMedic.uber or 0
-            local enemyTeam = localTeam == 2 and 3 or 2
-            local friendlyTeam = localTeam
-            local difference = (localTeam == 2) and (redUber - bluUber) or (bluUber - redUber)
+        -- Verify both teams have medic tables
+        if redMedics and bluMedics then
+            -- Safely get first medic from each team
+            local redMedic = redMedics[1]
+            local bluMedic = bluMedics[1]
             
-            -- Make sure we have valid medic data for both teams before accessing properties
-            local friendlyMedic = medics[friendlyTeam][1]
-            local enemyMedic = medics[enemyTeam][1]
-            
-            if not friendlyMedic or not enemyMedic then return end
-            
-            local displayText, textColor
-            
-            if status[friendlyTeam] == "MED DIED" then
-                if currentTime - (medDeathTime[friendlyTeam] or 0) <= CONFIG.medDeathDuration then
-                    displayText = "OUR MED DIED"
-                    textColor = CONFIG.colors.fullDisad
-                else
-                    displayText = "FULL DISAD"
-                    textColor = CONFIG.colors.fullDisad
+            -- Make sure we have both medics
+            if redMedic and bluMedic then
+                -- Get medic status safely with default values
+                local redUber = (redMedic.isAlive and redMedic.uber) or 0
+                local bluUber = (bluMedic.isAlive and bluMedic.uber) or 0
+                
+                -- Verify we have a valid local team
+                if localTeam == 2 or localTeam == 3 then
+                    local enemyTeam = localTeam == 2 and 3 or 2
+                    local friendlyTeam = localTeam
+                    
+                    -- Calculate difference based on team
+                    local difference = (localTeam == 2) and (redUber - bluUber) or (bluUber - redUber)
+                    
+                    -- Safely get friendly and enemy medics
+                    local friendlyMedic = medics[friendlyTeam] and medics[friendlyTeam][1]
+                    local enemyMedic = medics[enemyTeam] and medics[enemyTeam][1]
+                    
+                    -- Only proceed if we have both medics
+                    if friendlyMedic and enemyMedic then
+                        local displayText, textColor
+                        
+                        -- Safely check medic death times
+                        local friendlyDeathTime = medDeathTime[friendlyTeam] or 0
+                        local enemyDeathTime = medDeathTime[enemyTeam] or 0
+                        
+                        -- Status checks with safe defaults
+                        local friendlyStatus = status[friendlyTeam] or ""
+                        local enemyStatus = status[enemyTeam] or ""
+                        
+                        if friendlyStatus == "MED DIED" then
+                            if currentTime - friendlyDeathTime <= CONFIG.medDeathDuration then
+                                displayText = "OUR MED DIED"
+                                textColor = CONFIG.colors.fullDisad
+                            else
+                                displayText = "FULL DISAD"
+                                textColor = CONFIG.colors.fullDisad
+                            end
+                        elseif enemyStatus == "MED DIED" and 
+                            currentTime - enemyDeathTime <= CONFIG.medDeathDuration then
+                            displayText = "THEIR MED DIED"
+                            textColor = CONFIG.colors.fullAd
+                        elseif not enemyMedic.isAlive then
+                            displayText = "FULL AD"
+                            textColor = CONFIG.colors.fullAd
+                        elseif not friendlyMedic.isAlive then
+                            displayText = "FULL DISAD"
+                            textColor = CONFIG.colors.fullDisad
+                        elseif friendlyMedic.uber == 100 and enemyMedic.uber < 100 then
+                            displayText = string.format("FULL AD: %d%%", difference)
+                            textColor = CONFIG.colors.fullAd
+                        elseif enemyMedic.uber == 100 and friendlyMedic.uber < 100 then
+                            displayText = string.format("FULL DISAD: %d%%", math.abs(difference))
+                            textColor = CONFIG.colors.fullDisad
+                        elseif enemyStatus == "THEY USED" then
+                            displayText = "THEY USED"
+                            textColor = CONFIG.colors.theyUsed
+                        elseif friendlyStatus == "WE USED" then
+                            displayText = "WE USED"
+                            textColor = CONFIG.colors.weUsed
+                        elseif math.abs(difference) <= CONFIG.evenThresholdRange then
+                            displayText = "EVEN"
+                            textColor = CONFIG.colors.even
+                        elseif difference > 0 then
+                            displayText = string.format("AD: %d%%", difference)
+                            textColor = CONFIG.colors.fullAd
+                        else
+                            displayText = string.format("DISAD: %d%%", math.abs(difference))
+                            textColor = CONFIG.colors.fullDisad
+                        end
+                        
+                        -- Only draw if we have both text and color
+                        if displayText and textColor then
+                            -- Safely draw with proper checks
+                            if draw.SetFont and advantageFont then
+                                draw.SetFont(advantageFont)
+                                local textWidth, textHeight = draw.GetTextSize(displayText)
+                                if textWidth and textHeight then
+                                    local x, y = getAdvantageTextPosition(textWidth, textHeight)
+                                    if x and y then
+                                        drawWithColor(textColor, function()
+                                            draw.Text(x, y, displayText)
+                                        end)
+                                    end
+                                end
+                            end
+                        end
+                    end
                 end
-            elseif status[enemyTeam] == "MED DIED" and 
-                currentTime - (medDeathTime[enemyTeam] or 0) <= CONFIG.medDeathDuration then
-                displayText = "THEIR MED DIED"
-                textColor = CONFIG.colors.fullAd
-            elseif not enemyMedic.isAlive then
-                displayText = "FULL AD"
-                textColor = CONFIG.colors.fullAd
-            elseif not friendlyMedic.isAlive then
-                displayText = "FULL DISAD"
-                textColor = CONFIG.colors.fullDisad
-            elseif friendlyMedic.uber == 100 and enemyMedic.uber < 100 then
-                displayText = string.format("FULL AD: %d%%", difference)
-                textColor = CONFIG.colors.fullAd
-            elseif enemyMedic.uber == 100 and friendlyMedic.uber < 100 then
-                displayText = string.format("FULL DISAD: %d%%", math.abs(difference))
-                textColor = CONFIG.colors.fullDisad
-            elseif status[enemyTeam] == "THEY USED" then
-                displayText = "THEY USED"
-                textColor = CONFIG.colors.theyUsed
-            elseif status[friendlyTeam] == "WE USED" then
-                displayText = "WE USED"
-                textColor = CONFIG.colors.weUsed
-            elseif math.abs(difference) <= CONFIG.evenThresholdRange then
-                displayText = "EVEN"
-                textColor = CONFIG.colors.even
-            elseif difference > 0 then
-                displayText = string.format("AD: %d%%", difference)
-                textColor = CONFIG.colors.fullAd
-            else
-                displayText = string.format("DISAD: %d%%", math.abs(difference))
-                textColor = CONFIG.colors.fullDisad
-            end
-            
-            if displayText and textColor then
-                draw.SetFont(advantageFont)
-                local textWidth, textHeight = draw.GetTextSize(displayText)
-                local x, y = getAdvantageTextPosition(textWidth, textHeight)
-                drawWithColor(textColor, function()
-                    draw.Text(x, y, displayText)
-                end)
             end
         end
     end
