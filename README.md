@@ -72,3 +72,16 @@ end
 materials.Enumerate(get_materials)
 
 world textures don't get hidden, i guess vertexlitgeneric somethign fucks up
+it also lags because of the movechild thing
+
+
+.lua :260: Color not set, set it using draw.Color
+C:\Users\User\AppData\Local\trails.lua :260: Color not set, set it using draw.Color
+C:\Users\User\AppData\Local\trails.lua :260: Color not set, set it using draw.Color
+C:\Users\User\AppData\Local\trails.lua :260: Color not set, set it using draw.Color
+C:\Users\User\AppData\Local\trails.lua :260: Color not set, set it using draw.Color
+C:\Users\User\AppData\Local\trails.lua :260: Color not set, set it using draw.Color
+C:\Users\User\AppData\Local\trails.l
+
+
+
