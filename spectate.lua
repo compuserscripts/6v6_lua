@@ -23,6 +23,8 @@ local key_delay = 0.2
 local MOUSE_SENSITIVITY = 0.06
 local last_killer = nil
 local persistent_fullscreen = false
+local death_time = 0
+local current_wave_start = 0
 
 -- Material variables
 local materials_initialized = false
@@ -40,7 +42,137 @@ local title_font = draw.CreateFont("Tahoma", 12, 800, FONTFLAG_OUTLINE)
 local hud_font = draw.CreateFont("TF2 BUILD", 30, 800, FONTFLAG_OUTLINE)
 local killfeed_font = draw.CreateFont("TF2 BUILD", 24, 800, FONTFLAG_OUTLINE)
 
--- Cleanup function
+-- Constants
+local DEATH_TIME = 2.0
+local TRAVEL_TIME = 0.4
+local FREEZE_TIME = 4.0
+local DEFAULT_WAVE_TIME = 10.0
+local BASE_DELAY = TRAVEL_TIME + FREEZE_TIME
+local TOTAL_BASE_DELAY = DEATH_TIME + BASE_DELAY
+
+-- Static variables
+local lockedWaveTime = nil
+local lastDeathTime = nil
+local lastDebugTime = 0
+
+--[[
+There is a static base respawn time, which is based on a static death time of 2 seconds + the time for the freeze frame (0.4 travel time + 4.0 freeze time).
+On top of this base, the non-scaled respawn wave time is added, which is 10 seconds by default, and can be changed per team by an input which happens
+upon capturing a control point, which adds or subtracts from a team's base respawn wave time. Then, the game checks the time for the next respawn wave,
+and compares it to the time for the base respawn time. If the base respawn time occurs after the next respawn wave, the scaled respawn wave time is added
+on top of the next respawn wave to get the wave after the next, and so on until a respawn wave is found that occurs after the base respawn time.
+The scaled respawn wave time is the non-scaled respawn wave time, except with the following extra logic: if the respawn wave time is above 5 seconds,
+then scale it by a number between 0.25 and 1.0, linearly scaled by the number of players (1 to 8). Then this value is capped to a maximum of 5.
+    
+This logic happens during any PvP game, tournament mode or not. There are a few exceptions outside of normal PvP play, like in between rounds during Competitive Mode,
+you respawn with your static base respawn time, and in pre-game for tournament mode, there are no respawn times.
+]]--
+
+
+local function ScaleWaveTime(waveTime, playerCount)
+    if waveTime <= 5.0 then
+        return waveTime
+    end
+    
+    local scale = 0.25 + (math.min(playerCount, 8) - 1) * (0.75 / 7)
+    return math.min(waveTime * scale, 5.0)
+end
+
+local function GetRespawnTime()
+    local currentTime = globals.CurTime()
+    
+    if not lastDeathTime or currentTime - lastDeathTime > 15.0 then
+        lockedWaveTime = nil
+        lastDeathTime = currentTime
+        lastDebugTime = 0
+    end
+    
+    local baseRespawnTime = lastDeathTime + TOTAL_BASE_DELAY
+    
+    local resources = entities.GetPlayerResources()
+    if not resources then return 0 end
+    
+    local waveTable = resources:GetPropDataTableFloat("m_flNextRespawnTime")
+    if not waveTable then return 0 end
+    
+    if lockedWaveTime and lockedWaveTime > currentTime then
+        if currentTime - lastDebugTime >= 1.0 then
+            print(string.format("Time to respawn: %.1f", lockedWaveTime - currentTime))
+            lastDebugTime = currentTime
+        end
+        return lockedWaveTime - currentTime
+    end
+    
+    local futureWaves = {}
+    local seenWaves = {}
+    for _, waveTime in pairs(waveTable) do
+        local roundedTime = math.floor(waveTime * 100) / 100
+        if waveTime > currentTime and waveTime ~= 0 and not seenWaves[roundedTime] then
+            table.insert(futureWaves, waveTime)
+            seenWaves[roundedTime] = true
+        end
+    end
+    table.sort(futureWaves)
+    
+    print("Current time:", currentTime)
+    print("Base respawn time:", baseRespawnTime)
+    print("Available waves:")
+    for i, wave in ipairs(futureWaves) do
+        print(string.format("Wave %d: %.2f (in %.2f seconds)", 
+            i, wave, wave - currentTime))
+    end
+    
+    if #futureWaves == 0 then
+        return TOTAL_BASE_DELAY
+    end
+    
+    local nextWave = futureWaves[1]
+
+    if baseRespawnTime > nextWave then
+        -- Get scaled wave time
+        local playerCount = 0
+        for i = 1, 32 do
+            if resources:GetPropInt("m_bConnected", i) == 1 then
+                playerCount = playerCount + 1
+            end
+        end
+        
+        local fullWaveTime = DEFAULT_WAVE_TIME
+        if fullWaveTime > 5.0 then
+            local scale = 0.25 + (math.min(playerCount, 8) - 1) * (0.75 / 7)
+            fullWaveTime = math.min(fullWaveTime * scale, 5.0)
+        end
+        
+        -- Calculate where we should be after adding the wave time
+        local targetTime = nextWave + fullWaveTime
+        
+        -- Find the next wave after this point
+        local targetWave = nil
+        for _, wave in ipairs(futureWaves) do
+            if wave > targetTime then
+                targetWave = wave
+                break
+            end
+        end
+        
+        -- If we didn't find a suitable wave, add another wave time
+        if not targetWave then
+            targetWave = futureWaves[#futureWaves] + fullWaveTime
+        end
+        
+        lockedWaveTime = targetWave
+    else
+        -- Base respawn is before next wave, use next available wave
+        lockedWaveTime = nextWave
+    end
+    
+    print(string.format("Selected wave: %.2f (in %.2f seconds)", 
+        lockedWaveTime, lockedWaveTime - currentTime))
+    lastDebugTime = currentTime
+    return lockedWaveTime - currentTime
+end
+
+-- Cleanup state
 local function CleanupState()
     killfeed_deaths = {}
     camera_position = Vector3(0, 0, 0)
@@ -53,10 +185,32 @@ local function CleanupState()
     free_camera = false
     fullscreen_mode = persistent_fullscreen
     last_killer = nil
+    death_time = 0
+    current_wave_start = 0
+end
+
+-- Clean up function for materials and textures
+local function CleanupMaterials()
+    if windowed_texture then
+        draw.DeleteTexture(windowed_texture)
+        windowed_texture = nil
+    end
+    if fullscreen_texture then
+        draw.DeleteTexture(fullscreen_texture)
+        fullscreen_texture = nil
+    end
+    
+    windowed_material = nil
+    fullscreen_material = nil
+    invisibleMaterial = nil
+    materials_initialized = false
 end
 
 -- Initialize all materials
 local function InitializeAllMaterials()
+    -- Clean up any existing materials first
+    CleanupMaterials()
+    
     -- Create windowed mode materials
     local windowed_texture_name = "camTexture_windowed"
     windowed_texture = materials.CreateTextureRenderTarget(windowed_texture_name, camera_width, camera_height)
@@ -89,16 +243,13 @@ local function InitializeAllMaterials()
         }
     ]], fullscreen_texture_name))
 
-    -- Create invisible material if needed
-    if not invisibleMaterial then
-        invisibleMaterial = materials.Create("invisible_material", [[
-            VertexLitGeneric
-            {
-                $basetexture    "vgui/white"
-                $no_draw        1
-            }
-        ]])
-    end
+    invisibleMaterial = materials.Create("invisible_material", [[
+        VertexLitGeneric
+        {
+            $basetexture    "vgui/white"
+            $no_draw        1
+        }
+    ]])
 
     materials_initialized = true
 end
@@ -350,6 +501,84 @@ local function DrawKillfeed()
     end
 end
 
+-- Make sure to set death_time when player dies
+callbacks.Register("FireGameEvent", function(event)
+    if event:GetName() == "player_death" then
+        local localPlayer = entities.GetLocalPlayer()
+        if not localPlayer then return end
+        
+        local victim = entities.GetByUserID(event:GetInt("userid"))
+        if victim and localPlayer:GetIndex() == victim:GetIndex() then
+            death_time = globals.CurTime()
+            current_wave_start = 0 -- Reset current wave
+        end
+    end
+end)
+
+-- Track when points are captured to reset wave timing
+local function OnGameEvent(event)
+    if event:GetName() == "team_control_point_captured" then
+        -- Reset our target wave when a point is captured
+        targetWaveTime = nil
+        current_wave_start = globals.CurTime()
+    end
+end
+callbacks.Register("FireGameEvent", "point_capture_hook", OnGameEvent)
+
+-- Update DrawSpectatorHUD
+local function DrawSpectatorHUD()
+    if not fullscreen_mode then return end
+    
+    local time = GetRespawnTime()
+    if time > 0 then
+        draw.SetFont(hud_font)
+        draw.Color(255, 255, 255, 255)
+        local respawnText = string.format("Respawning in: %.1f", time)
+        local textW, textH = draw.GetTextSize(respawnText)
+        draw.TextShadow(
+            math.floor(fullscreen_width/2 - textW/2),
+            40,
+            respawnText
+        )
+    end
+    
+    if not target_player or free_camera then return end
+    
+    -- Rest of your HUD drawing code...
+    local health = target_player:GetHealth()
+    if not health then return end
+    local maxHealth = target_player:GetMaxHealth()
+    if not maxHealth then return end
+    local playerName = target_player:GetName()
+    if not playerName then return end
+    
+    local healthColor = {
+        r = math.floor(255 * (1 - (health / maxHealth))),
+        g = math.floor(255 * (health / maxHealth)),
+        b = 0
+    }
+
+    local crosshairColor = {
+        r = 0,
+        g = 255,
+        b = 0
+    }
+        
+    draw.SetFont(hud_font)
+    draw.Color(255, 255, 255, 255)
+    local nameW, nameH = draw.GetTextSize(playerName)
+    draw.TextShadow(math.floor(fullscreen_width/2 - nameW/2), math.floor(fullscreen_height - 140), playerName)
+    
+    draw.Color(healthColor.r, healthColor.g, healthColor.b, 255)
+    local healthText = string.format("%d HP", health)
+    local textW, textH = draw.GetTextSize(healthText)
+    draw.TextShadow(math.floor(fullscreen_width/2 - textW/2), math.floor(fullscreen_height - 100), healthText)
+
+    if first_person_mode then
+        draw_crosshair(fullscreen_width/2, fullscreen_height/2, crosshairColor.r, crosshairColor.g, crosshairColor.b, 255)
+    end
+end
+
 local function HandleCameraControls()
     local current_time = globals.RealTime()
 
@@ -412,43 +641,6 @@ local function HandleCameraControls()
     end
 end
 
-local function DrawSpectatorHUD()
-    if not target_player or not fullscreen_mode or free_camera then return end
-    
-    local health = target_player:GetHealth()
-    if not health then return end
-    local maxHealth = target_player:GetMaxHealth()
-    if not maxHealth then return end
-    local playerName = target_player:GetName()
-    if not playerName then return end
-    
-    local healthColor = {
-        r = math.floor(255 * (1 - (health / maxHealth))),
-        g = math.floor(255 * (health / maxHealth)),
-        b = 0
-    }
-
-    local crosshairColor = {
-        r = 0,
-        g = 255,
-        b = 0
-    }
-        
-    draw.SetFont(hud_font)
-    draw.Color(255, 255, 255, 255)
-    local nameW, nameH = draw.GetTextSize(playerName)
-    draw.TextShadow(math.floor(fullscreen_width/2 - nameW/2), math.floor(fullscreen_height - 140), playerName)
-    
-    draw.Color(healthColor.r, healthColor.g, healthColor.b, 255)
-    local healthText = string.format("%d HP", health)
-    local textW, textH = draw.GetTextSize(healthText)
-    draw.TextShadow(math.floor(fullscreen_width/2 - textW/2), math.floor(fullscreen_height - 100), healthText)
-
-    if first_person_mode then
-        draw_crosshair(fullscreen_width/2, fullscreen_height/2, crosshairColor.r, crosshairColor.g, crosshairColor.b, 255)
-    end
-end
-
 callbacks.Register("DrawModel", function(ctx)
     if not target_player or not first_person_mode or not invisibleMaterial then return end
     
@@ -463,14 +655,21 @@ end)
 callbacks.Register("CreateMove", function(cmd)
     if first_person_mode then return end
     
-    local mouse_x = -cmd.mousedx * MOUSE_SENSITIVITY
-    local mouse_y = cmd.mousedy * MOUSE_SENSITIVITY
-    
-    own_view_angles.y = own_view_angles.y + mouse_x
-    own_view_angles.x = math.max(-89, math.min(89, own_view_angles.x + mouse_y))
+    -- Allow mouse movement in free cam or when in third person with target
+    if free_camera or (target_player and not first_person_mode) then
+        local mouse_x = -cmd.mousedx * MOUSE_SENSITIVITY
+        local mouse_y = cmd.mousedy * MOUSE_SENSITIVITY
+        
+        own_view_angles.y = own_view_angles.y + mouse_x
+        own_view_angles.x = math.max(-89, math.min(89, own_view_angles.x + mouse_y))
+    end
 end)
 
 callbacks.Register("PostRenderView", function(view)
+    if engine.Con_IsVisible() or engine.IsGameUIVisible() then 
+        return
+    end
+
     if not materials_initialized then
         InitializeAllMaterials()
         return
@@ -536,15 +735,23 @@ callbacks.Register("PostRenderView", function(view)
             render_width, render_height
         )
     else
+        --camera_position = Vector3(0, 0, 0)
         CleanupState()
     end
 end)
 
+-- Then modify the Draw callback to print when conditions are met
 callbacks.Register("Draw", function()
+    if engine.Con_IsVisible() or engine.IsGameUIVisible() then 
+        return
+    end
+
     local localPlayer = entities.GetLocalPlayer()
     if not localPlayer or not localPlayer:IsAlive() then
-        if fullscreen_mode and target_player then
-            DrawSpectatorHUD()
+        --print("Debug Draw: Player dead, fullscreen = " .. tostring(fullscreen_mode))  -- Debug print
+        
+        if fullscreen_mode then
+            DrawSpectatorHUD()  -- Should now always draw at least respawn timer
             DrawKillfeed()
         end
 
@@ -619,11 +826,6 @@ callbacks.Register("FireGameEvent", HandleKillfeedEvent)
 InitializeAllMaterials()
 
 callbacks.Register("Unload", function()
-    windowed_texture = nil
-    fullscreen_texture = nil
-    windowed_material = nil
-    fullscreen_material = nil
-    invisibleMaterial = nil
+    CleanupMaterials()
     CleanupState()
-    materials_initialized = false
 end)
