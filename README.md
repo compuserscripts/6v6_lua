@@ -60,3 +60,15 @@ sentry aim line, like sniper. aDD notif on screen if on you and highlitght sentr
 notif on screen if someone looks at you, highlight or borders
 
 sticky explosion radius/rocket explosion radius when drawing projected path, like a ball
+
+fix nohats so that
+
+local get_materials = function(material)
+    if material:GetTextureGroupName() == "World textures" then
+        --material:ColorModulate(255, 0, 0); --done this one first then done the one below to try "reset" it.
+        material:ColorModulate(255, 255, 255);
+    end
+end
+materials.Enumerate(get_materials)
+
+world textures don't get hidden, i guess vertexlitgeneric somethign fucks up
