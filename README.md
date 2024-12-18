@@ -69,3 +69,5 @@ C:\Users\User\AppData\Local\arrow.lua :316: attempt to index a nil value (local 
 
 
 rip player path out of p_aimbot
+
+fix ammo crash if autoexec
