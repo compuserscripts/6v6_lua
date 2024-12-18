@@ -6,7 +6,7 @@ local CONFIG = {
     -- Visualization modes
     enableChams = true,  -- Enable chams visualization
     enableBox = true,  -- Enable border box visualization
-    visibleOnly = false, -- Only show effects on visible players
+    visibleOnly = true, -- Only show effects on visible players
     
     -- Box settings
     boxColor = {r = 255, g = 0, b = 0, a = 190},  -- RGBA color for the box
