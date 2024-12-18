@@ -67,3 +67,5 @@ sentry chams visible only or not if in given radius
 
 C:\Users\User\AppData\Local\arrow.lua :316: attempt to index a nil value (local 'patient')
 
+
+rip player path out of p_aimbot
