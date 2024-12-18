@@ -5,8 +5,8 @@ local CONFIG = {
     boxColor = {255, 165, 0, 255},  -- Orange for hiders
     tracerColor = {0, 0, 255, 255}, -- Blue for tracers
     timeToMarkAsHider = 5.5,  -- Seconds player must remain stationary
-    updatePositionThreshold = 2.0,  -- Units player must move to be considered "moving"
-    maxDistance = 1200  -- Maximum distance to check for hiders (hammer units)
+    updatePositionThreshold = 1.0,  -- Units player must move to be considered "moving"
+    maxDistance = 1650  -- Maximum distance to check for hiders (hammer units)
 }
 
 -- Player tracking data
