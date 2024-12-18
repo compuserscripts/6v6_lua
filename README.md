@@ -42,7 +42,7 @@ spy detector, if within certain radius change color to rainbow or something to i
 
 fix med arrow line to go from eyeangles to where its fired to instead of legs
 
-fix nohats lag
+fix nohats lag -- only draw textures on players who are visible
 
 sentry aim line, like sniper. aDD notif on screen if on you and highlitght sentry or chams. same with sniper
 
