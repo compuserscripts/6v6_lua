@@ -156,5 +156,7 @@ local function OnDrawModel(ctx)
 end
 
 -- Register callbacks
+callbacks.Unregister("Draw", "SimplifiedSoldierESP")
 callbacks.Register("Draw", "SimplifiedSoldierESP", OnDraw)
+callbacks.Unregister("DrawModel", "SimplifiedSoldierChams")
 callbacks.Register("DrawModel", "SimplifiedSoldierChams", OnDrawModel)
