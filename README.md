@@ -63,5 +63,5 @@ materials.Enumerate(get_materials)
 world textures don't get hidden, i guess vertexlitgeneric somethign fucks up
 it also lags because of the movechild thing
 
-
+sentry chams visible only or not if in given radius
 
