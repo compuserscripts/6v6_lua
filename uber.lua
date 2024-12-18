@@ -153,6 +153,11 @@ local buildingState = {
     }
 }
 
+-- Check if game is in pregame
+local function isInPregame()
+    return gamerules.GetRoundState() == 1 -- ROUND_PREGAME
+end
+
 local function getNextBuildState(currentState)
     local transitions = CONFIG.approximation.stateTransitions[currentState]
     if not transitions then return "regular", 10 end
@@ -293,7 +298,7 @@ local function getAdvantageTextPosition(textWidth, textHeight)
 end
 
 local function onDraw()
-    if engine.IsGameUIVisible() then return end
+    if engine.IsGameUIVisible() or isInPregame() then return end
 
     local lineoffset = 0
     local players = entities.FindByClass("CTFPlayer")
@@ -314,6 +319,7 @@ local function onDraw()
         end)
     end
 
+    -- Find and process medics
     for _, entity in pairs(players) do
         if entity and entity:GetTeamNumber() and entity:GetPropInt("m_iClass") == 5 then
             local teamNumber = entity:GetTeamNumber()
@@ -375,6 +381,7 @@ local function onDraw()
         end
     end
 
+    -- Draw advantage text only if we have medics on both teams
     if CONFIG.advantageText.enabled and medics[2][1] and medics[3][1] then
         local redUber = medics[2][1].isAlive and medics[2][1].uber or 0
         local bluUber = medics[3][1].isAlive and medics[3][1].uber or 0
