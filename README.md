@@ -24,8 +24,6 @@ killfeed colors for different classes. only for enemy
 
 sentry radius, bubble, through walls
 
-tracer line whos on beam - from med to target
-
 esp lasso - same as anti air but for all classes, able to specify different color boxes and tracers for each class. maybe alpha based on distance? also only visible mode for all of them
 
 matchhud enemy hp
