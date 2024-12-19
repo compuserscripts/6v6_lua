@@ -2,7 +2,7 @@
 local CONFIG = {
     showTracers = true,
     showBoxes = true,
-    showChams = false, -- this is on false by default because of how material stuff lags in lbox
+    showChams = false,
     tracerOnlyWhenNotVisible = false,
     boxOnlyWhenNotVisible = false,
     chamsOnlyWhenNotVisible = false,
@@ -18,6 +18,7 @@ local SOLDIER_CLASS = 3
 local BLAST_JUMPING_COND = 81
 local MAX_DISTANCE_SQR = 3500 * 3500
 local CLEANUP_INTERVAL = 0.5  -- Clean every 500ms
+local SPINE_HITBOX = 4  -- Spine hitbox for visibility checks
 
 -- Colors
 local COLOR_VISIBLE = {0, 255, 0, 125}
@@ -54,6 +55,31 @@ local chamsMaterial = materials.Create("soldier_chams", [[
         "$selfillumtint" "[0 0.3 0.6]"
     }
 ]])
+
+-- Advanced visibility checking function
+local function IsVisible(entity, localPlayer)
+    if not entity or not localPlayer then return false end
+
+    local eyePos = localPlayer:GetAbsOrigin() + localPlayer:GetPropVector("localdata", "m_vecViewOffset[0]")
+    local hitboxes = entity:GetHitboxes()
+    local isTeammate = entity:GetTeamNumber() == localPlayer:GetTeamNumber()
+    local mask = isTeammate and MASK_SHOT_HULL or MASK_VISIBLE
+    
+    -- Try hitbox-based check first
+    if hitboxes then
+        local spineHitbox = hitboxes[SPINE_HITBOX]
+        if spineHitbox then
+            local hitboxPos = (spineHitbox[1] + spineHitbox[2]) * 0.5  -- Get center of hitbox
+            local trace = engine.TraceLine(eyePos, hitboxPos, mask)
+            return isTeammate and trace.fraction > 0.97 or trace.entity == entity
+        end
+    end
+    
+    -- Fall back to origin-based check if hitboxes aren't available
+    local targetPos = entity:GetAbsOrigin()
+    local trace = engine.TraceLine(eyePos, targetPos, mask)
+    return isTeammate and trace.fraction > 0.97 or trace.entity == entity
+end
 
 -- Draw ESP box with corners, handling perspective correctly
 local function DrawESPBox(x1, y1, x2, y2, isVisible)
@@ -108,10 +134,11 @@ local function CleanInvalidTargets()
     for entIndex, lastSeen in pairs(trackedPlayers) do
         local entity = entities.GetByIndex(entIndex)
         
-        -- Clean if entity is invalid, dead, or hasn't been seen recently
+        -- Clean if entity is invalid, dead, dormant, or hasn't been seen recently
         if not entity or 
            not entity:IsValid() or 
            not entity:IsAlive() or
+           entity:IsDormant() or
            entity:GetTeamNumber() == localPlayer:GetTeamNumber() or
            currentTime - lastSeen > CLEANUP_INTERVAL * 2 then
             trackedPlayers[entIndex] = nil
@@ -149,6 +176,9 @@ local function OnDraw()
     CleanInvalidTargets()
 
     for idx, player in pairs(players) do
+        -- Skip dormant players
+        if player:IsDormant() then goto continue end
+        
         if player:IsAlive() and
            player:GetTeamNumber() ~= localPlayer:GetTeamNumber() and
            player:GetPropInt("m_iClass") == SOLDIER_CLASS and
@@ -169,13 +199,8 @@ local function OnDraw()
 
             if distSqr > MAX_DISTANCE_SQR then goto continue end
 
-            -- Visibility check
-            local isVisible = false
-            local eyePos = localPos + localPlayer:GetPropVector("localdata", "m_vecViewOffset[0]")
-            local trace = TraceLine(eyePos, playerPos, MASK_VISIBLE)
-            if trace.entity and trace.entity:GetIndex() == player:GetIndex() then
-                isVisible = true
-            end
+            -- Visibility check using improved function
+            local isVisible = IsVisible(player, localPlayer)
 
             -- 2D Box drawing
             if CONFIG.showBoxes and (not CONFIG.boxOnlyWhenNotVisible or not isVisible) then
@@ -222,6 +247,9 @@ local function OnDrawModel(ctx)
 
     local entity = ctx:GetEntity()
     if not entity or not entity:IsPlayer() then return end
+    
+    -- Skip dormant entities
+    if entity:IsDormant() then return end
 
     local localPlayer = entities.GetLocalPlayer()
     if not localPlayer or entity:GetTeamNumber() == localPlayer:GetTeamNumber() then return end
@@ -229,14 +257,8 @@ local function OnDrawModel(ctx)
     if entity:GetPropInt("m_iClass") == SOLDIER_CLASS and
        entity:InCond(BLAST_JUMPING_COND) then
 
-        -- Visibility check
-        local isVisible = false
-        local eyePos = localPlayer:GetAbsOrigin() + localPlayer:GetPropVector("localdata", "m_vecViewOffset[0]")
-        local playerPos = entity:GetAbsOrigin()
-        local trace = TraceLine(eyePos, playerPos, MASK_VISIBLE)
-        if trace.entity and trace.entity:GetIndex() == entity:GetIndex() then
-            isVisible = true
-        end
+        -- Visibility check using improved function
+        local isVisible = IsVisible(entity, localPlayer)
 
         if not CONFIG.chamsOnlyWhenNotVisible or not isVisible then
             ctx:ForcedMaterialOverride(chamsMaterial)
