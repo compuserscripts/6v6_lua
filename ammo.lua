@@ -18,6 +18,14 @@ local sin = math.sin
 local rad = math.rad
 local format = string.format
 
+-- Track initialization state
+local initialized = false
+local textures = {
+    clock = nil,
+    health = nil,
+    ammo = nil
+}
+
 -- Add update interval control
 local lastUpdateTick = 0
 local UPDATE_INTERVAL = 2 -- Update positions every 2 ticks
@@ -80,11 +88,87 @@ local config = {
     }
 }
 
--- Create default font
-local font = draw.CreateFont("Verdana", config.textSize.default, 800)
+-- Font variables
+local font = nil
+local fontCache = {}
+
+-- Standard respawn time
+local RESPAWN_TIME = 10.0
+
+-- Store initial positions of supplies
+local supplyPositions = {}
+
+-- Safe font creation
+local function CreateFonts()
+    if not font then
+        font = draw.CreateFont("Verdana", config.textSize.default, 800)
+    end
+end
+
+-- Safe texture creation
+local function CreateTextures()
+    if not textures.clock then
+        textures.clock = draw.CreateTextureRGBA(string.char(255, 255, 255, 255), 1, 1)
+    end
+    
+    if not textures.health then
+        textures.health = draw.CreateTextureRGBA(string.char(
+            config.healthColor.r, config.healthColor.g, config.healthColor.b, config.healthColor.polygonAlpha,
+            config.healthColor.r, config.healthColor.g, config.healthColor.b, config.healthColor.polygonAlpha,
+            config.healthColor.r, config.healthColor.g, config.healthColor.b, config.healthColor.polygonAlpha,
+            config.healthColor.r, config.healthColor.g, config.healthColor.b, config.healthColor.polygonAlpha
+        ), 2, 2)
+    end
+    
+    if not textures.ammo then
+        textures.ammo = draw.CreateTextureRGBA(string.char(
+            config.ammoColor.r, config.ammoColor.g, config.ammoColor.b, config.ammoColor.polygonAlpha,
+            config.ammoColor.r, config.ammoColor.g, config.ammoColor.b, config.ammoColor.polygonAlpha,
+            config.ammoColor.r, config.ammoColor.g, config.ammoColor.b, config.ammoColor.polygonAlpha,
+            config.ammoColor.r, config.ammoColor.g, config.ammoColor.b, config.ammoColor.polygonAlpha
+        ), 2, 2)
+    end
+end
+
+-- Initialize resources safely
+local function Initialize()
+    if initialized then return end
+    
+    -- Only initialize if we're in game
+    local localPlayer = entities.GetLocalPlayer()
+    if not localPlayer then return end
+    
+    CreateFonts()
+    CreateTextures()
+    
+    initialized = true
+end
+
+-- Safe cleanup
+local function Cleanup()
+    if textures.clock then
+        draw.DeleteTexture(textures.clock)
+        textures.clock = nil
+    end
+    if textures.health then
+        draw.DeleteTexture(textures.health)
+        textures.health = nil
+    end
+    if textures.ammo then
+        draw.DeleteTexture(textures.ammo)
+        textures.ammo = nil
+    end
+    
+    fontCache = {}
+    nextVisCheck = nil
+    visibilityCache = nil
+    modelCache = nil
+    vecCache = nil
+    supplyPositions = {}
+    initialized = false
+end
 
 -- Cache fonts for different sizes
-local fontCache = {}
 local function GetFont(size)
     size = math.floor(size)
     if not fontCache[size] then
@@ -92,28 +176,6 @@ local function GetFont(size)
     end
     return fontCache[size]
 end
-
--- Create textures
-local clockTexture = draw.CreateTextureRGBA(string.char(255, 255, 255, 255), 1, 1)
-local fillTextureHealth = draw.CreateTextureRGBA(string.char(
-    config.healthColor.r, config.healthColor.g, config.healthColor.b, config.healthColor.polygonAlpha,
-    config.healthColor.r, config.healthColor.g, config.healthColor.b, config.healthColor.polygonAlpha,
-    config.healthColor.r, config.healthColor.g, config.healthColor.b, config.healthColor.polygonAlpha,
-    config.healthColor.r, config.healthColor.g, config.healthColor.b, config.healthColor.polygonAlpha
-), 2, 2)
-
-local fillTextureAmmo = draw.CreateTextureRGBA(string.char(
-    config.ammoColor.r, config.ammoColor.g, config.ammoColor.b, config.ammoColor.polygonAlpha,
-    config.ammoColor.r, config.ammoColor.g, config.ammoColor.b, config.ammoColor.polygonAlpha,
-    config.ammoColor.r, config.ammoColor.g, config.ammoColor.b, config.ammoColor.polygonAlpha,
-    config.ammoColor.r, config.ammoColor.g, config.ammoColor.b, config.ammoColor.polygonAlpha
-), 2, 2)
-
--- Standard respawn time
-local RESPAWN_TIME = 10.0
-
--- Store initial positions of supplies
-local supplyPositions = {}
 
 -- Optimization: Cached model check
 local function GetPickupType(entity)
@@ -185,7 +247,7 @@ local function DrawClockFill(centerX, centerY, radius, percentage, vertices, col
     end
     
     COLOR(colorTable.r, colorTable.g, colorTable.b, colorTable.polygonAlpha)
-    POLYGON(clockTexture, points)
+    POLYGON(textures.clock, points)
 end
 
 -- Ground polygon drawing
@@ -270,8 +332,8 @@ local function UpdateSupplyPositions()
     if currentTick - lastUpdateTick < UPDATE_INTERVAL then return end
     lastUpdateTick = currentTick
     
-    local currentSupplies = {} -- Declare it here
-    local currentTime = CUR_TIME() -- Also need this
+    local currentSupplies = {}
+    local currentTime = CUR_TIME()
     
     local entities = FIND_BY_CLASS("CBaseAnimating")
     
@@ -308,11 +370,20 @@ end
 
 -- Main ESP callback
 callbacks.Register("Draw", "SupplyRespawnESP", function()
-    if engine.Con_IsVisible() or engine.IsGameUIVisible() then return end
-    draw.SetFont(font)
+    -- Initialize resources if needed
+    Initialize()
+    
+    -- Don't proceed if not initialized or game UI is visible
+    if not initialized or engine.Con_IsVisible() or engine.IsGameUIVisible() then 
+        return 
+    end
     
     local localPlayer = entities.GetLocalPlayer()
-    if not localPlayer or not localPlayer:IsAlive() then return end
+    if not localPlayer or not localPlayer:IsAlive() then 
+        return 
+    end
+    
+    draw.SetFont(font)
     
     UpdateSupplyPositions()
     
@@ -327,7 +398,7 @@ callbacks.Register("Draw", "SupplyRespawnESP", function()
                 local timePercent = timeLeft / RESPAWN_TIME
                 
                 local colorConfig = info.type == "health" and config.healthColor or config.ammoColor
-                local fillTexture = info.type == "health" and fillTextureHealth or fillTextureAmmo
+                local fillTexture = info.type == "health" and textures.health or textures.ammo
                 
                 local distance = VECTOR_LENGTH(playerPos, info.pos)
                 
@@ -365,15 +436,5 @@ callbacks.Register("Draw", "SupplyRespawnESP", function()
     end
 end)
 
--- Cleanup
-callbacks.Register("Unload", function()
-    draw.DeleteTexture(clockTexture)
-    draw.DeleteTexture(fillTextureHealth)
-    draw.DeleteTexture(fillTextureAmmo)
-    fontCache = {}
-    nextVisCheck = nil
-    visibilityCache = nil
-    modelCache = nil
-    vecCache = nil
-    supplyPositions = {}
-end)
+-- Cleanup on unload
+callbacks.Register("Unload", Cleanup)
