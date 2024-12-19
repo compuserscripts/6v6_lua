@@ -2,7 +2,7 @@
 local CONFIG = {
     showTracers = true,
     showBoxes = true,
-    showChams = true,
+    showChams = false, -- this is on false by default because of how material stuff lags in lbox
     tracerOnlyWhenNotVisible = false,
     boxOnlyWhenNotVisible = false,
     chamsOnlyWhenNotVisible = false,
