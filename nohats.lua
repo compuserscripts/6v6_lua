@@ -5,6 +5,14 @@ local settings = {
     hide_botkillers = true  -- Hide botkiller attachments
 }
 
+-- Visibility check caching
+local nextVisCheck = {}
+local visibilityCache = {}
+local vecCache = {
+    eyePos = Vector3(0, 0, 0),
+    viewOffset = Vector3(0, 0, 0)
+}
+
 -- Invisible material for hiding models
 local invismat = nil
 
@@ -19,6 +27,35 @@ local function InitMaterial()
             }
         ]])
     end
+end
+
+-- Optimized visibility check from ammo script
+local function IsVisible(entity)
+    if not entity then return false end
+    
+    local pos = entity:GetAbsOrigin()
+    local id = math.floor(pos.x) .. math.floor(pos.y) .. math.floor(pos.z)
+    local curTick = globals.TickCount()
+    
+    if nextVisCheck[id] and curTick < nextVisCheck[id] then
+        return visibilityCache[id]
+    end
+    
+    local localPlayer = entities.GetLocalPlayer()
+    if not localPlayer then return false end
+    
+    vecCache.viewOffset = localPlayer:GetPropVector("localdata", "m_vecViewOffset[0]")
+    vecCache.eyePos = localPlayer:GetAbsOrigin()
+    vecCache.eyePos.x = vecCache.eyePos.x + vecCache.viewOffset.x
+    vecCache.eyePos.y = vecCache.eyePos.y + vecCache.viewOffset.y
+    vecCache.eyePos.z = vecCache.eyePos.z + vecCache.viewOffset.z
+    
+    local trace = engine.TraceLine(vecCache.eyePos, pos, MASK_SHOT_HULL)
+    
+    visibilityCache[id] = trace.fraction > 0.99
+    nextVisCheck[id] = curTick + 3
+    
+    return visibilityCache[id]
 end
 
 -- Check if entity is a cosmetic item
@@ -41,9 +78,9 @@ local function IsCosmetic(entity)
     return false
 end
 
--- Check if entity is attached to a player
-local function IsAttachedToPlayer(entity)
-    if not entity then return false end
+-- Check if entity is attached to a player and get owner
+local function GetAttachedPlayer(entity)
+    if not entity then return nil end
     
     local players = entities.FindByClass("CTFPlayer")
     for _, player in pairs(players) do
@@ -52,14 +89,14 @@ local function IsAttachedToPlayer(entity)
             local moveChild = player:GetMoveChild()
             while moveChild do
                 if moveChild == entity then 
-                    return true 
+                    return player
                 end
                 moveChild = moveChild:GetMovePeer()
             end
         end
     end
     
-    return false
+    return nil
 end
 
 -- Main DrawModel callback
@@ -72,13 +109,25 @@ callbacks.Register("DrawModel", function(ctx)
     local entity = ctx:GetEntity()
     if not entity or not entity:IsValid() then return end
     
-    -- Check if entity is a cosmetic and attached to a player
-    if IsCosmetic(entity) and IsAttachedToPlayer(entity) then
-        ctx:ForcedMaterialOverride(invismat)
+    -- Check if entity is a cosmetic
+    if IsCosmetic(entity) then
+        local ownerPlayer = GetAttachedPlayer(entity)
+        if ownerPlayer then
+            -- Only hide cosmetics on visible players
+            if IsVisible(ownerPlayer) then
+                ctx:ForcedMaterialOverride(invismat)
+            end
+        end
     end
 end)
 
 -- Cleanup on script unload
 callbacks.Register("Unload", function()
     invismat = nil
+    nextVisCheck = {}
+    visibilityCache = {}
+    vecCache = {
+        eyePos = Vector3(0, 0, 0),
+        viewOffset = Vector3(0, 0, 0)
+    }
 end)
