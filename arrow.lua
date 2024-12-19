@@ -305,48 +305,54 @@ local function DrawHealMarker(pos, color)
 end
 
 local function PlayerHealedEvent(event)
-    if (event:GetName() == 'player_healed') then
-        local localPlayer = entities.GetLocalPlayer()
-        if not localPlayer then return end
+    if (event:GetName() ~= 'player_healed') then return end
+    
+    local localPlayer = entities.GetLocalPlayer()
+    if not localPlayer then return end
 
-        local patient = entities.GetByUserID(event:GetInt("patient"))
-        local healer = entities.GetByUserID(event:GetInt("healer"))
+    -- Get patient and healer entities with nil checks
+    local patientID = event:GetInt("patient")
+    local healerID = event:GetInt("healer")
+    if not patientID or not healerID then return end
+    
+    local patient = entities.GetByUserID(patientID)
+    local healer = entities.GetByUserID(healerID)
+    
+    -- Validate both patient and healer
+    if not patient or not patient:IsValid() or not healer or not healer:IsValid() then return end
+    
+    -- Skip if healer is healing themselves
+    if healer:GetIndex() == patient:GetIndex() then return end
 
-        -- Skip if healer is invalid or if healer is healing themselves
-        if not healer or not healer:IsValid() or healer:GetIndex() == patient:GetIndex() then
-            return
+    -- Look for healing bolts that belong to this healer
+    local arrows = entities.FindByClass("CTFProjectile_HealingBolt")
+    local foundArrow = false
+    for _, arrow in pairs(arrows) do
+        if arrow:IsValid() and arrow:GetPropEntity("m_hOwnerEntity") == healer then
+            foundArrow = true
+            break
         end
+    end
 
-        -- Look for healing bolts that belong to this healer
-        local arrows = entities.FindByClass("CTFProjectile_HealingBolt")
-        local foundArrow = false
-        for _, arrow in pairs(arrows) do
-            if arrow:IsValid() and arrow:GetPropEntity("m_hOwnerEntity") == healer then
-                foundArrow = true
-                break
-            end
-        end
+    -- Only proceed if we found a healing bolt from this healer
+    if not foundArrow then return end
 
-        -- Only proceed if we found a healing bolt from this healer
-        if not foundArrow then return end
+    if not enemy_only or patient:GetTeamNumber() ~= localPlayer:GetTeamNumber() then
+        local startPos = healer:GetAbsOrigin() + healer:GetPropVector("localdata", "m_vecViewOffset[0]")
+        local endPos = patient:GetAbsOrigin()
+        local box = getHitboxWithCache(patient)
 
-        if not enemy_only or patient:GetTeamNumber() ~= localPlayer:GetTeamNumber() then
-            local startPos = healer:GetAbsOrigin() + healer:GetPropVector("localdata", "m_vecViewOffset[0]")
-            local endPos = patient:GetAbsOrigin()
-            local box = getHitboxWithCache(patient)
+        table.insert(healInfo, 1, {
+            startPos = startPos,
+            endPos = endPos,
+            healPos = endPos,
+            box = box,
+            time = globals.RealTime(),
+            visible = not visible_only or IsVisible(patient, localPlayer)
+        })
 
-            table.insert(healInfo, 1, {
-                startPos = startPos,
-                endPos = endPos,
-                healPos = endPos,
-                box = box,
-                time = globals.RealTime(),
-                visible = not visible_only or IsVisible(patient, localPlayer)
-            })
-
-            if #healInfo > max_records then 
-                table.remove(healInfo)
-            end
+        if #healInfo > max_records then 
+            table.remove(healInfo)
         end
     end
 end
