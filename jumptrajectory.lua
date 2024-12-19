@@ -1,3 +1,6 @@
+-- Track initialization state
+local initialized = false
+
 -- Configuration toggles
 local config = {
     -- Style settings (1 = Line, 2 = Alt Line, 3 = Dashed)
@@ -18,6 +21,7 @@ local projectileSimulation2 = Vector3(0, 0, 0)
 local vHitbox = { Vector3(-22, -22, 0), Vector3(22, 22, 80) }
 local lastPosition = {}
 local priorPrediction = {}
+local impactPolygon = nil
 
 -- Impact polygon configuration
 local polygonConfig = {
@@ -143,8 +147,33 @@ function ImpactPolygon:draw(plane, origin)
     end
 end
 
--- Create impact polygon instance
-local impactPolygon = ImpactPolygon:new()
+-- Initialize resources safely
+local function Initialize()
+    if initialized then return end
+    
+    -- Only initialize if we're in game
+    local localPlayer = entities.GetLocalPlayer()
+    if not localPlayer then return end
+    
+    -- Create impact polygon instance
+    impactPolygon = ImpactPolygon:new()
+    
+    initialized = true
+end
+
+-- Safe cleanup
+local function Cleanup()
+    if impactPolygon then
+        impactPolygon:destroy()
+        impactPolygon = nil
+    end
+    
+    vPath = {}
+    lastPosition = {}
+    priorPrediction = {}
+    projectileSimulation2 = Vector3(0, 0, 0)
+    initialized = false
+end
 
 -- Helper functions
 local function Normalize(vec)
@@ -198,6 +227,12 @@ local function IsRocketJumping(player)
 end
 
 local function OnCreateMove()
+    -- Initialize resources if needed
+    Initialize()
+    
+    -- Don't proceed if not initialized
+    if not initialized then return end
+    
     local me = entities.GetLocalPlayer()
     if not me or not me:IsAlive() then return end
     
@@ -284,6 +319,14 @@ local function OnCreateMove()
 end
 
 local function OnDraw()
+    -- Initialize resources if needed
+    Initialize()
+    
+    -- Don't proceed if not initialized or game UI is visible
+    if not initialized or engine.Con_IsVisible() or engine.IsGameUIVisible() then 
+        return 
+    end
+    
     if not vPath or #vPath == 0 then return end
     
     draw.Color(255 - math.floor((hitChance / 100) * 255), math.floor((hitChance / 100) * 255), 0, 255)
@@ -316,7 +359,7 @@ local function OnDraw()
         if distanceToLanding > config.minLandingDistance then
             local lastPointIndex = #vPath
             if lastPointIndex >= 2 then
-                if config.showPolygon then
+                if config.showPolygon and impactPolygon then
                     local direction = vPath[lastPointIndex] - vPath[lastPointIndex - 1]
                     local plane = Normalize(direction)
                     impactPolygon:draw(plane, projectileSimulation2)
@@ -334,11 +377,8 @@ local function OnDraw()
     end
 end
 
-callbacks.Register("Unload", function()
-    if impactPolygon then
-        impactPolygon:destroy()
-    end
-end)
+-- Register cleanup callback
+callbacks.Register("Unload", Cleanup)
 
 callbacks.Register("CreateMove", "PathVisualization.CreateMove", OnCreateMove)
 callbacks.Register("Draw", "PathVisualization.Draw", OnDraw)
