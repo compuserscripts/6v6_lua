@@ -61,3 +61,5 @@ visible box color for focusfire like in antiair
 
 proper unload and register for all scripts
 
+when drawing chams in focusfire/antiair use getmovechild and peer to color the entire model/weapon so all attachments
+
