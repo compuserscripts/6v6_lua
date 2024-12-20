@@ -67,3 +67,4 @@ sniper rendertarget scope, so we can zoom further without using fov because that
 
 make players we aim at fullbright
 
+modified projectile camera, make it not show flying stickies but instead if a sticky is stationary AND it has line of sight to a player, we display the window and display the camera from the perspective of the sticky, in first person and it will lock on to and follow the nearest person it has line of sight to in first person, from stickys perspective. kind of like a security camera. 
