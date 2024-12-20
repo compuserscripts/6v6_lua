@@ -6,12 +6,14 @@ local CONFIG = {
     tracerColor = {0, 0, 255, 255}, -- Blue for tracers
     timeToMarkAsHider = 5.5,  -- Seconds player must remain stationary
     updatePositionThreshold = 1.0,  -- Units player must move to be considered "moving"
-    maxDistance = 1650  -- Maximum distance to check for hiders (hammer units)
+    maxDistance = 1650,  -- Maximum distance to check for hiders (hammer units)
+    cleanupInterval = 0.5  -- Clean invalid players every 500ms
 }
 
 -- Player tracking data
 local playerData = {}
 local lastLifeState = 2  -- Start with LIFE_DEAD (2)
+local nextCleanupTime = 0
 
 -- Pre-cache commonly used functions for performance
 local floor = math.floor
@@ -37,6 +39,31 @@ local function ResetPlayerData()
     playerData = {}
 end
 
+-- Clean up invalid targets
+local function CleanInvalidTargets()
+    local currentTime = RealTime()
+    if currentTime < nextCleanupTime then return end
+    
+    nextCleanupTime = currentTime + CONFIG.cleanupInterval
+    
+    local localPlayer = entities.GetLocalPlayer()
+    if not localPlayer then return end
+    
+    for playerIndex, data in pairs(playerData) do
+        local entity = entities.GetByIndex(playerIndex)
+        
+        -- Clean if entity is invalid, dead, dormant, on our team, or hasn't been seen recently
+        if not entity or 
+           not entity:IsValid() or 
+           not entity:IsAlive() or
+           entity:IsDormant() or
+           entity:GetTeamNumber() == localPlayer:GetTeamNumber() or
+           currentTime - data.lastMoveTime > CONFIG.cleanupInterval * 2 then
+            playerData[playerIndex] = nil
+        end
+    end
+end
+
 -- Check if player is within valid range
 local function IsPlayerInRange(player, localPlayer)
     if not player or not localPlayer then return false end
@@ -49,7 +76,7 @@ end
 
 -- Update player data
 local function UpdatePlayerData(player)
-    if not player:IsAlive() then return end
+    if not player:IsAlive() or player:IsDormant() then return end
     
     local currentTime = RealTime()
     local currentPos = player:GetAbsOrigin()
@@ -87,11 +114,17 @@ local function OnDraw()
     end
     lastLifeState = currentLifeState
     
+    -- Clean up invalid targets periodically
+    CleanInvalidTargets()
+    
     local players = entities.FindByClass("CTFPlayer")
     local screenW, screenH = GetScreenSize()
     local centerX, centerY = floor(screenW / 2), floor(screenH / 2)
     
     for _, player in pairs(players) do
+        -- Skip dormant players immediately
+        if player:IsDormant() then goto continue end
+        
         if player:IsAlive() and 
            player:GetTeamNumber() ~= localPlayer:GetTeamNumber() and
            IsPlayerInRange(player, localPlayer) then
@@ -139,6 +172,7 @@ local function OnDraw()
                 end
             end
         end
+        ::continue::
     end
 end
 
