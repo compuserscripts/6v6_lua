@@ -55,3 +55,9 @@ sentry chams visible only or not if in given radius
 
 sniper chams when visible
 
+focusfire/antiair box corners scale with distance
+
+visible box color for focusfire like in antiair
+
+proper unload and register for all scripts
+
