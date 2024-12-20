@@ -2,18 +2,19 @@
 local CONFIG = {
     minAttackers = 2,  -- Minimum number of different attackers required to highlight target
     trackerTimeWindow = 4.5,  -- How long to consider someone as being "targeted" after being shot
+    cleanupInterval = 0.5,  -- How often to clean up invalid targets (seconds)
     
     -- Visualization modes
     enableChams = true,  -- Enable chams visualization
     enableBox = true,  -- Enable border box visualization
-    visibleOnly = true, -- Only show effects on visible players
+    visibleOnly = false, -- Only show effects on visible players
     
     -- Box settings
     boxColor = {r = 255, g = 0, b = 0, a = 190},  -- RGBA color for the box
     boxThickness = 2,  -- Thickness of the box border
     boxPadding = 3,    -- Padding around the player model
     useCorners = true,  -- Use corners instead of full box
-    cornerLength = 10,   -- Length of corner lines when using corners
+    cornerLength = 10   -- Length of corner lines when using corners
 }
 
 -- Pre-cache functions and variables
@@ -26,7 +27,8 @@ local lastLifeState = 2  -- Start with LIFE_DEAD (2)
 local chamsMaterial = nil
 local myfont = draw.CreateFont("Verdana", 16, 800)
 local nextCleanupTime = 0
-local CLEANUP_INTERVAL = 0.5  -- Clean every 500ms
+local nextVisCheck = {}
+local visibilityCache = {}
 
 -- Create materials
 local function InitializeMaterials()
@@ -49,6 +51,38 @@ end
 
 -- Initialize materials on script load
 InitializeMaterials()
+
+-- Improved visibility check with caching
+local function IsPlayerVisible(player)
+    if not CONFIG.visibleOnly then return true end
+    
+    local localPlayer = GetLocalPlayer()
+    if not player or not localPlayer then return false end
+    
+    local id = player:GetIndex()
+    local curTick = globals.TickCount()
+    
+    -- Use cached result if available
+    if nextVisCheck[id] and curTick < nextVisCheck[id] then
+        return visibilityCache[id] or false
+    end
+    
+    -- Get eye position for more accurate tracing
+    local localEyePos = localPlayer:GetAbsOrigin() + localPlayer:GetPropVector("localdata", "m_vecViewOffset[0]")
+    local targetPos = player:GetAbsOrigin() + Vector3(0, 0, 40) -- Aim for chest area
+    
+    -- Use appropriate mask based on team
+    local isTeammate = player:GetTeamNumber() == localPlayer:GetTeamNumber()
+    local mask = isTeammate and MASK_SHOT_HULL or MASK_SHOT
+    
+    local trace = TraceLine(localEyePos, targetPos, mask)
+    
+    -- Cache result
+    visibilityCache[id] = trace.entity == player or trace.fraction > 0.99
+    nextVisCheck[id] = curTick + 2 -- Cache for 2 ticks
+    
+    return visibilityCache[id]
+end
 
 -- Draw corner lines
 local function DrawCorners(x1, y1, x2, y2)
@@ -76,7 +110,7 @@ local function CleanExpiredAttackers(currentTime, targetInfo)
     local newAttackers = {}
     local count = 0
     local hasExpired = false
-
+    
     for attackerIndex, timestamp in pairs(targetInfo.attackers) do
         if currentTime - timestamp <= CONFIG.trackerTimeWindow then
             newAttackers[attackerIndex] = timestamp
@@ -85,25 +119,11 @@ local function CleanExpiredAttackers(currentTime, targetInfo)
             hasExpired = true
         end
     end
-
+    
     targetInfo.attackerCount = count
     targetInfo.isMultiTargeted = (count >= CONFIG.minAttackers)
     
     return hasExpired and newAttackers or targetInfo.attackers
-end
-
--- Check if a player is visible
-local function IsPlayerVisible(player)
-    if not CONFIG.visibleOnly then return true end
-    
-    local localPlayer = GetLocalPlayer()
-    if not localPlayer then return false end
-    
-    local localEyePos = localPlayer:GetAbsOrigin() + localPlayer:GetPropVector("localdata", "m_vecViewOffset[0]")
-    local targetPos = player:GetAbsOrigin() + Vector3(0, 0, 40) -- Aim for chest area
-    
-    local trace = engine.TraceLine(localEyePos, targetPos, MASK_SHOT)
-    return trace.entity == player
 end
 
 -- Clean up invalid targets
@@ -111,7 +131,7 @@ local function CleanInvalidTargets()
     local currentTime = RealTime()
     if currentTime < nextCleanupTime then return end
     
-    nextCleanupTime = currentTime + CLEANUP_INTERVAL
+    nextCleanupTime = currentTime + CONFIG.cleanupInterval
     
     local localPlayer = GetLocalPlayer()
     if not localPlayer then return end
@@ -119,31 +139,44 @@ local function CleanInvalidTargets()
     for entIndex, targetInfo in pairs(targetData) do
         local entity = entities.GetByIndex(entIndex)
         
-        -- Clean if entity is invalid, dead, or not being multi-targeted anymore
+        -- Clean if entity is invalid, dead, dormant, or on our team
         if not entity or 
            not entity:IsValid() or 
            not entity:IsAlive() or
+           entity:IsDormant() or
            entity:GetTeamNumber() == localPlayer:GetTeamNumber() then
             targetData[entIndex] = nil
-        else
-            -- Update target status
-            targetInfo.attackers = CleanExpiredAttackers(currentTime, targetInfo)
-            if targetInfo.attackerCount < CONFIG.minAttackers then
-                targetData[entIndex] = nil
-            end
+            nextVisCheck[entIndex] = nil
+            visibilityCache[entIndex] = nil
+            goto continue
         end
+        
+        -- Update target status and clean if no longer multi-targeted
+        targetInfo.attackers = CleanExpiredAttackers(currentTime, targetInfo)
+        if targetInfo.attackerCount < CONFIG.minAttackers then
+            targetData[entIndex] = nil
+            nextVisCheck[entIndex] = nil
+            visibilityCache[entIndex] = nil
+        end
+        
+        ::continue::
     end
 end
 
 -- Reset all data (used on respawn)
 local function ResetTargetData()
-    for k in pairs(targetData) do
-        targetData[k] = nil
-    end
+    targetData = {}
+    nextVisCheck = {}
+    visibilityCache = {}
+    nextCleanupTime = 0
 end
+
 -- Check if player should be visualized
 local function ShouldVisualizePlayer(player)
-    if not player or not player:IsValid() or not player:IsAlive() then 
+    if not player or 
+       not player:IsValid() or 
+       not player:IsAlive() or
+       player:IsDormant() then 
         return false 
     end
     
@@ -164,6 +197,9 @@ local function OnPlayerHurt(event)
     local attacker = GetByUserID(event:GetInt("attacker"))
     
     if not victim or not attacker or victim == attacker then return end
+    
+    -- Skip dormant entities
+    if victim:IsDormant() or attacker:IsDormant() then return end
     
     local victimIndex = victim:GetIndex()
     if not targetData[victimIndex] then
@@ -186,6 +222,9 @@ end
 local function OnDrawModel(ctx)
     local entity = ctx:GetEntity()
     if not entity or not entity:IsPlayer() then return end
+    
+    -- Skip dormant entities
+    if entity:IsDormant() then return end
     
     if ShouldVisualizePlayer(entity) then
         -- Apply chams if enabled
