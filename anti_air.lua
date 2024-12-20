@@ -18,7 +18,6 @@ local SOLDIER_CLASS = 3
 local BLAST_JUMPING_COND = 81
 local MAX_DISTANCE_SQR = 3500 * 3500
 local CLEANUP_INTERVAL = 0.5  -- Clean every 500ms
-local SPINE_HITBOX = 4  -- Spine hitbox for visibility checks
 
 -- Colors
 local COLOR_VISIBLE = {0, 255, 0, 125}
@@ -56,29 +55,28 @@ local chamsMaterial = materials.Create("soldier_chams", [[
     }
 ]])
 
--- Advanced visibility checking function
+-- Improved visibility checking function
 local function IsVisible(entity, localPlayer)
     if not entity or not localPlayer then return false end
 
+    -- Get eye position for more accurate tracing
     local eyePos = localPlayer:GetAbsOrigin() + localPlayer:GetPropVector("localdata", "m_vecViewOffset[0]")
-    local hitboxes = entity:GetHitboxes()
+    local targetPos = entity:GetAbsOrigin()
+    if not eyePos or not targetPos then return false end
+
+    -- Use appropriate mask based on team
     local isTeammate = entity:GetTeamNumber() == localPlayer:GetTeamNumber()
     local mask = isTeammate and MASK_SHOT_HULL or MASK_VISIBLE
     
-    -- Try hitbox-based check first
-    if hitboxes then
-        local spineHitbox = hitboxes[SPINE_HITBOX]
-        if spineHitbox then
-            local hitboxPos = (spineHitbox[1] + spineHitbox[2]) * 0.5  -- Get center of hitbox
-            local trace = engine.TraceLine(eyePos, hitboxPos, mask)
-            return isTeammate and trace.fraction > 0.97 or trace.entity == entity
-        end
-    end
-    
-    -- Fall back to origin-based check if hitboxes aren't available
-    local targetPos = entity:GetAbsOrigin()
+    -- Perform trace
     local trace = engine.TraceLine(eyePos, targetPos, mask)
-    return isTeammate and trace.fraction > 0.97 or trace.entity == entity
+    
+    -- Different handling for teammates vs enemies
+    if isTeammate then
+        return trace.fraction > 0.97 -- More lenient check for teammates
+    else
+        return trace.entity == entity -- Must hit the exact entity for enemies
+    end
 end
 
 -- Draw ESP box with corners, handling perspective correctly
