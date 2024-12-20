@@ -59,4 +59,3 @@ sentry chams visible only or not if in given radius
 
 sniper chams when visible
 
-fix aggressive caching/stale data of hiders
