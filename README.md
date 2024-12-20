@@ -20,8 +20,6 @@ cloak and dagger stop
 
 killfeed colors for different classes. only for enemy
 
-sentry radius, bubble, through walls
-
 esp lasso - same as anti air but for all classes, able to specify different color boxes and tracers for each class. maybe alpha based on distance? also only visible mode for all of them
 
 matchhud enemy hp
@@ -35,8 +33,6 @@ autosap
 spy detector, if within certain radius change color to rainbow or something to indicate they decloaked, but only if within certain radius
 
 fix med arrow line to go from eyeangles to where its fired to instead of legs
-
-sentry aim line, like sniper. aDD notif on screen if on you and highlitght sentry or chams. same with sniper
 
 notif on screen if someone looks at you, highlight or borders
 
