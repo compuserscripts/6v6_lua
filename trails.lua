@@ -6,6 +6,7 @@ local max_trail_distance = 1850 -- Maximum distance to show trails
 local visibility_timeout = 4 -- Time in seconds to keep showing the trail after losing sight of the enemy
 local max_visible_duration = 2 -- Time in seconds to show the trail while enemy is continuously visible
 local trail_height = 1.5 -- Adjusts the start height of the trail (0-5, can use decimals)
+local cleanup_interval = 0.5 -- How often to clean up invalid data (seconds)
 
 -- Cache math functions
 local floor = math.floor
@@ -20,6 +21,13 @@ local heightOffset = Vector3(0, 0, 0)
 local nextVisCheck = {}
 local visibilityCache = {}
 
+-- State tracking
+local nextCleanupTime = 0
+local lastUpdateTick = 0
+local currentMap = ""
+local scriptActive = false
+local lastLifeState = 2  -- Track respawn state (2 = dead)
+
 -- Enum for player visibility states
 local VisibilityState = {
     UNSEEN = 1,
@@ -28,10 +36,6 @@ local VisibilityState = {
 }
 
 local playerData = {}
-local lastUpdateTick = 0
-local currentMap = ""
-local scriptActive = false
-local lastLifeState = 2  -- Track respawn state (2 = dead)
 
 -- Pre-calculate trail height offset
 local trailHeightUnits = math.min(5, math.max(0, trail_height)) * 20
@@ -61,6 +65,54 @@ local function ClearData()
     nextVisCheck = {}
     visibilityCache = {}
     lastUpdateTick = 0
+    nextCleanupTime = 0
+end
+
+-- Clean up invalid targets and stale data
+local function CleanInvalidTargets()
+    local currentTime = globals.RealTime()
+    if currentTime < nextCleanupTime then return end
+    
+    nextCleanupTime = currentTime + cleanup_interval
+    
+    local localPlayer = entities.GetLocalPlayer()
+    if not localPlayer then return end
+    
+    for steamID, data in pairs(playerData) do
+        -- Find the player entity by iterating through entities
+        local playerFound = false
+        local playerDormant = false
+        local playerValid = false
+        
+        for i = 1, globals.MaxClients() do
+            local player = entities.GetByIndex(i)
+            if player then
+                local info = client.GetPlayerInfo(i)
+                if info and info.SteamID == steamID then
+                    playerFound = true
+                    playerDormant = player:IsDormant()
+                    playerValid = player:IsValid() and player:IsAlive()
+                    break
+                end
+            end
+        end
+        
+        -- Clean if:
+        -- 1. Player not found
+        -- 2. Player is dormant
+        -- 3. Player is invalid/dead
+        -- 4. Last trail position is too old
+        -- 5. Player hasn't been seen recently in visibility tracking
+        if not playerFound or 
+           playerDormant or 
+           not playerValid or
+           (data.times[1] and currentTime - data.times[1] > fade_time) or
+           (data.lastSeenTime and currentTime - data.lastSeenTime > visibility_timeout) then
+            playerData[steamID] = nil
+            nextVisCheck[steamID] = nil
+            visibilityCache[steamID] = nil
+        end
+    end
 end
 
 -- Optimized visibility check with caching
@@ -158,6 +210,9 @@ local function aUpdate()
     end
     lastLifeState = currentLifeState
 
+    -- Clean up invalid targets periodically
+    CleanInvalidTargets()
+
     local localPos = localPlayer:GetAbsOrigin()
     local currentTick = globals.TickCount()
     local currentTime = globals.RealTime()
@@ -166,7 +221,7 @@ local function aUpdate()
     if currentTick - lastUpdateTick >= update_interval then
         for i = 1, globals.MaxClients() do
             local player = entities.GetByIndex(i)
-            if not player or not player:IsValid() then goto continue end
+            if not player or not player:IsValid() or player:IsDormant() then goto continue end
             
             local info = client.GetPlayerInfo(i)
             local steamID = info and info.SteamID
