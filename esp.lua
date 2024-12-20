@@ -37,13 +37,16 @@ end
 
 local function GetHealthBarColor(health, maxHealth)
     local ratio = health / maxHealth
-    local invertedAlpha = math.floor(255 * (1 - ratio))
-    invertedAlpha = math.max(invertedAlpha, ALPHA)
+    -- Linear scaling from ALPHA to 255 based on health percentage
+    local currentAlpha = math.floor(255 - (ratio * (255 - ALPHA)))
+    
+    -- Clamp alpha between ALPHA and 255
+    currentAlpha = math.max(ALPHA, math.min(255, currentAlpha))
     
     if health > maxHealth then
-        return OVERHEAL_COLOR[1], OVERHEAL_COLOR[2], OVERHEAL_COLOR[3], invertedAlpha
+        return OVERHEAL_COLOR[1], OVERHEAL_COLOR[2], OVERHEAL_COLOR[3], ALPHA  -- Always use base alpha for overheal
     else
-        return math.floor(255 * (1 - ratio)), math.floor(255 * ratio), 0, invertedAlpha
+        return math.floor(255 * (1 - ratio)), math.floor(255 * ratio), 0, currentAlpha
     end
 end
 
@@ -58,17 +61,19 @@ local function DrawHealthBar(x, y, width, health, maxHealth)
     healthBarSize = math.floor(healthBarSize)
     overhealSize = math.floor(overhealSize)
 
-    -- Background
+    -- Background (Set color before drawing)
     draw.Color(0, 0, 0, ALPHA)
     draw.FilledRect(x, y, x + width, y + BAR_HEIGHT)
 
-    -- Main health bar
-    draw.Color(GetHealthBarColor(math.min(health, maxHealth), maxHealth))
+    -- Main health bar (Get color components then set color before drawing)
+    local r, g, b, a = GetHealthBarColor(math.min(health, maxHealth), maxHealth)
+    draw.Color(r, g, b, a)
     draw.FilledRect(x + 1, y + 1, x + healthBarSize - 1, y + BAR_HEIGHT - 1)
 
-    -- Overheal bar
+    -- Overheal bar (Get color components then set color before drawing)
     if overhealSize > 0 then
-        draw.Color(GetHealthBarColor(health, maxHealth))
+        local r, g, b, a = GetHealthBarColor(health, maxHealth)
+        draw.Color(r, g, b, a)
         draw.FilledRect(x + healthBarSize, y + 1, x + healthBarSize + overhealSize - 1, y + BAR_HEIGHT - 1)
     end
 end
