@@ -10,42 +10,6 @@ local config = {
     fixedHealthBars = true -- When true, health bars won't wobble with player models
 }
 
--- Visibility check caching
-local nextVisCheck = {}
-local visibilityCache = {}
-local vecCache = {
-    eyePos = Vector3(0, 0, 0),
-    viewOffset = Vector3(0, 0, 0)
-}
-
--- Optimized visibility check
-local function IsVisible(entity, localPlayer)
-    if not entity or not localPlayer then return false end
-    
-    local pos = entity:GetAbsOrigin()
-    local id = math.floor(pos.x) .. math.floor(pos.y) .. math.floor(pos.z)
-    local curTick = globals.TickCount()
-    
-    if nextVisCheck[id] and curTick < nextVisCheck[id] then
-        return visibilityCache[id]
-    end
-    
-    vecCache.viewOffset = localPlayer:GetPropVector("localdata", "m_vecViewOffset[0]")
-    vecCache.eyePos = localPlayer:GetAbsOrigin()
-    vecCache.eyePos.x = vecCache.eyePos.x + vecCache.viewOffset.x
-    vecCache.eyePos.y = vecCache.eyePos.y + vecCache.viewOffset.y 
-    vecCache.eyePos.z = vecCache.eyePos.z + vecCache.viewOffset.z
-    
-    local isTeammate = entity:GetTeamNumber() == localPlayer:GetTeamNumber()
-    local mask = isTeammate and MASK_SHOT_HULL or MASK_VISIBLE
-    local trace = engine.TraceLine(vecCache.eyePos, pos, mask)
-    
-    visibilityCache[id] = isTeammate and trace.fraction > 0.97 or trace.entity == entity
-    nextVisCheck[id] = curTick + 3
-    
-    return visibilityCache[id]
-end
-
 local function Get2DBoundingBox(entity)
     local hitbox = entity:HitboxSurroundingBox()
     local corners = {
@@ -120,52 +84,49 @@ callbacks.Register("Draw", "HealthBarESP", function()
 
     local isLocalPlayerMedic = IsMedic(localPlayer)
     local showTeammates = MEDIC_MODE and isLocalPlayerMedic
+    local eyePos = localPos + localPlayer:GetPropVector("localdata", "m_vecViewOffset[0]")
 
     local players = entities.FindByClass("CTFPlayer")
     for _, player in pairs(players) do
-        if player:IsAlive() and not player:IsDormant() and player ~= localPlayer and
-           (showTeammates and player:GetTeamNumber() == localPlayer:GetTeamNumber() or
-           not showTeammates and player:GetTeamNumber() ~= localPlayer:GetTeamNumber()) and 
-           not player:InCond(4) then
+        if not player:IsAlive() or player:IsDormant() or player == localPlayer then goto continue end
+        if player:InCond(4) or player:InCond(3) then goto continue end -- Skip if cloaked or disguised
+        
+        local isFriendly = player:GetTeamNumber() == localPlayer:GetTeamNumber()
+        if not (showTeammates and isFriendly or not showTeammates and not isFriendly) then goto continue end
 
-            local playerPos = player:GetAbsOrigin()
-            if not playerPos then goto continue end
+        local playerPos = player:GetAbsOrigin()
+        if not playerPos then goto continue end
 
-            local dx = playerPos.x - localPos.x
-            local dy = playerPos.y - localPos.y
-            local dz = playerPos.z - localPos.z
-            local distSqr = dx * dx + dy * dy + dz * dz
-            if distSqr > MAX_DISTANCE_SQR then goto continue end
+        local dx = playerPos.x - localPos.x
+        local dy = playerPos.y - localPos.y
+        local dz = playerPos.z - localPos.z
+        local distSqr = dx * dx + dy * dy + dz * dz
+        if distSqr > MAX_DISTANCE_SQR then goto continue end
 
-            if not IsVisible(player, localPlayer) then goto continue end
+        -- Visibility check
+        local mask = isFriendly and MASK_SHOT_HULL or MASK_VISIBLE
+        local trace = engine.TraceLine(eyePos, playerPos, mask)
+        if isFriendly then
+            if trace.fraction <= 0.97 then goto continue end
+        else
+            if trace.entity ~= player then goto continue end
+        end
 
-            local health = player:GetHealth()
-            local maxHealth = player:GetMaxHealth()
+        local health = player:GetHealth()
+        local maxHealth = player:GetMaxHealth()
 
-            if config.fixedHealthBars then
-                -- Simple fixed position like your example
-                local basePos = client.WorldToScreen(playerPos)
-                if basePos then
-                    DrawHealthBar(basePos[1] - BAR_WIDTH/2, basePos[2] + 30, BAR_WIDTH, health, maxHealth)
-                end
-            else
-                -- Wobble mode using bounding box
-                local x, y, x2, y2 = Get2DBoundingBox(player)
-                if x then
-                    DrawHealthBar(x, y2 + 2, x2 - x, health, maxHealth)
-                end
+        if config.fixedHealthBars then
+            local basePos = client.WorldToScreen(playerPos)
+            if basePos then
+                DrawHealthBar(basePos[1] - BAR_WIDTH/2, basePos[2] + 30, BAR_WIDTH, health, maxHealth)
+            end
+        else
+            local x, y, x2, y2 = Get2DBoundingBox(player)
+            if x then
+                DrawHealthBar(x, y2 + 2, x2 - x, health, maxHealth)
             end
         end
+
         ::continue::
     end
-end)
-
--- Cleanup on script unload
-callbacks.Register("Unload", function()
-    nextVisCheck = {}
-    visibilityCache = {}
-    vecCache = {
-        eyePos = Vector3(0, 0, 0),
-        viewOffset = Vector3(0, 0, 0)
-    }
 end)
