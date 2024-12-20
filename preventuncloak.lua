@@ -1,3 +1,14 @@
+-- Create a semi-random threshold that changes periodically
+local function getRandomThreshold()
+    -- Get current time in seconds to use as seed
+    local timeSeed = math.floor(globals.RealTime())
+    -- Change threshold every 2 seconds
+    local periodSeed = math.floor(timeSeed / 2)
+    -- Use the time-based seed to generate a random value between 15-17
+    engine.RandomSeed(periodSeed)
+    return 15 + engine.RandomFloat(0, 2)
+end
+
 local function cloakManager(cmd)
     -- Get local player
     local player = entities.GetLocalPlayer()
@@ -10,10 +21,12 @@ local function cloakManager(cmd)
 
     -- Get cloak meter
     local cloakMeter = player:GetPropFloat("m_flCloakMeter") 
+    
+    -- Get current threshold (changes every 2 seconds)
+    local threshold = getRandomThreshold()
 
-    -- If cloak is getting low (below 16%), prevent movement to allow recharge
-    -- 16% chosen because it gives enough buffer to prevent accidental uncloaking
-    if cloakMeter < 16 then
+    -- If cloak is getting low, prevent movement to allow recharge
+    if cloakMeter < threshold then
         -- Clear movement buttons
         cmd.forwardmove = 0
         cmd.sidemove = 0
