@@ -1,7 +1,7 @@
 -- Configuration
 local CONFIG = {
     lineColor = {r = 255, g = 0, b = 0, a = 255},  -- Red line
-    lineLength = 500,  -- Length of aim line in hammer units
+    lineLength = 1100,  -- Length of aim line in hammer units
     showFriendly = false,  -- Whether to show friendly sentry aim lines
 }
 
