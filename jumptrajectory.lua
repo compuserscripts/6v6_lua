@@ -1,37 +1,40 @@
--- Track initialization state
+-- Track initialization state and timer
 local initialized = false
+local lastPredictionTime = 0
+local PREDICTION_INTERVAL = 0.016
 
 -- Configuration toggles
 local config = {
-    -- Style settings (1 = Line, 2 = Alt Line, 3 = Dashed)
     pathStyle = 1,
-    
-    -- Feature toggles
-    showPolygon = true,        -- Show landing impact polygon
-    showLandingX = false,       -- Show X marker at landing point
-    requireVisibility = true,  -- Only track visible players
-    
-    -- Visual settings
-    minLandingDistance = 100   -- Minimum distance to show landing indicators
+    showPolygon = true,        
+    showLandingX = false,       
+    requireVisibility = true,  
+    minLandingDistance = 100,
+    predictionTicks = 66,
+    hitChanceWindow = 20 
 }
 
-local hitChance = 0
+-- Cached vectors and arrays
 local vPath = {}
-local projectileSimulation2 = Vector3(0, 0, 0)
-local vHitbox = { Vector3(-22, -22, 0), Vector3(22, 22, 80) }
 local lastPosition = {}
 local priorPrediction = {}
-local impactPolygon = nil
+local hitChance = 0
+local projectileSimulation2 = Vector3(0, 0, 0)
+local vHitbox = { Vector3(-22, -22, 0), Vector3(22, 22, 80) }
+local vStep = Vector3(0, 0, 0)
+local traceMask = MASK_PLAYERSOLID
+local gravity = 0
+local tickInterval = 0
 
 -- Impact polygon configuration
 local polygonConfig = {
     enabled = true,
-    r = 0,         -- Red
-    g = 255,       -- Green 
-    b = 0,         -- Blue
-    a = 25,        -- Alpha/transparency
-    size = 40,     -- Size of the polygon
-    segments = 13, -- Number of segments (more = smoother circle)
+    r = 0,         
+    g = 255,       
+    b = 0,         
+    a = 25,        
+    size = 40,     
+    segments = 13,  
     outline = {
         enabled = true,
         r = 0,
@@ -47,7 +50,6 @@ ImpactPolygon.__index = ImpactPolygon
 
 function ImpactPolygon:new()
     local self = setmetatable({}, ImpactPolygon)
-    -- Create texture for the polygon
     self.texture = draw.CreateTextureRGBA(string.char(
         0xff, 0xff, 0xff, polygonConfig.a,
         0xff, 0xff, 0xff, polygonConfig.a,
@@ -69,7 +71,6 @@ function ImpactPolygon:calculatePositions(plane, origin)
     local positions = {}
     local radius = polygonConfig.size
 
-    -- Handle near-vertical surfaces differently
     if math.abs(plane.z) >= 0.99 then
         for i = 1, polygonConfig.segments do
             local ang = i * self.segmentAngle
@@ -81,15 +82,13 @@ function ImpactPolygon:calculatePositions(plane, origin)
             local screenPos = client.WorldToScreen(worldPos)
             if not screenPos then return nil end
             
-            -- Add both position and texture coordinates
             positions[i] = {
-                screenPos[1], screenPos[2],  -- Position
-                0.5 + 0.5 * math.cos(ang),   -- Texture U
-                0.5 + 0.5 * math.sin(ang)    -- Texture V
+                screenPos[1], screenPos[2],
+                0.5 + 0.5 * math.cos(ang),
+                0.5 + 0.5 * math.sin(ang)
             }
         end
     else
-        -- Calculate right and up vectors for the plane
         local right = Vector3(-plane.y, plane.x, 0)
         local up = Vector3(
             plane.z * right.y,
@@ -97,7 +96,6 @@ function ImpactPolygon:calculatePositions(plane, origin)
             (plane.y * right.x) - (plane.x * right.y)
         )
         
-        -- Adjust radius for plane angle
         radius = radius / math.cos(math.asin(plane.z))
 
         for i = 1, polygonConfig.segments do
@@ -108,11 +106,10 @@ function ImpactPolygon:calculatePositions(plane, origin)
             local screenPos = client.WorldToScreen(worldPos)
             if not screenPos then return nil end
             
-            -- Add both position and texture coordinates
             positions[i] = {
-                screenPos[1], screenPos[2],  -- Position
-                0.5 + 0.5 * math.cos(ang),   -- Texture U
-                0.5 + 0.5 * math.sin(ang)    -- Texture V
+                screenPos[1], screenPos[2],
+                0.5 + 0.5 * math.cos(ang),
+                0.5 + 0.5 * math.sin(ang)
             }
         end
     end
@@ -126,11 +123,9 @@ function ImpactPolygon:draw(plane, origin)
     local positions = self:calculatePositions(plane, origin)
     if not positions then return end
 
-    -- Draw the polygon
     draw.Color(polygonConfig.r, polygonConfig.g, polygonConfig.b, 255)
     draw.TexturedPolygon(self.texture, positions, true)
 
-    -- Draw outline if enabled
     if polygonConfig.outline.enabled then
         draw.Color(
             polygonConfig.outline.r,
@@ -147,40 +142,6 @@ function ImpactPolygon:draw(plane, origin)
     end
 end
 
--- Initialize resources safely
-local function Initialize()
-    if initialized then return end
-    
-    -- Only initialize if we're in game
-    local localPlayer = entities.GetLocalPlayer()
-    if not localPlayer then return end
-    
-    -- Create impact polygon instance
-    impactPolygon = ImpactPolygon:new()
-    
-    initialized = true
-end
-
--- Safe cleanup
-local function Cleanup()
-    if impactPolygon then
-        impactPolygon:destroy()
-        impactPolygon = nil
-    end
-    
-    vPath = {}
-    lastPosition = {}
-    priorPrediction = {}
-    projectileSimulation2 = Vector3(0, 0, 0)
-    initialized = false
-end
-
--- Helper functions
-local function Normalize(vec)
-    local length = math.sqrt(vec.x * vec.x + vec.y * vec.y + vec.z * vec.z)
-    return Vector3(vec.x / length, vec.y / length, vec.z / length)
-end
-
 local function L_line(start_pos, end_pos, secondary_line_size)
     if not (start_pos and end_pos) then return end
     
@@ -188,7 +149,12 @@ local function L_line(start_pos, end_pos, secondary_line_size)
     local direction_length = direction:Length()
     if direction_length == 0 then return end
     
-    local normalized_direction = Normalize(direction)
+    local normalized_direction = direction:Length() > 0 and Vector3(
+        direction.x / direction_length,
+        direction.y / direction_length,
+        direction.z / direction_length
+    ) or Vector3(0, 0, 0)
+    
     local perpendicular = Vector3(normalized_direction.y, -normalized_direction.x, 0) * secondary_line_size
     
     local w2s_start_pos = client.WorldToScreen(start_pos)
@@ -214,31 +180,57 @@ local function IsVisible(entity, localPlayer)
 end
 
 local function IsOnGround(player)
-    local pFlags = player:GetPropInt("m_fFlags")
-    return (pFlags & FL_ONGROUND) == 1
+    return (player:GetPropInt("m_fFlags") & FL_ONGROUND) == 1
 end
 
 local function IsRocketJumping(player)
     if player:GetPropInt("m_iClass") ~= 3 then return false end
-    -- Check for either being in the air with upward velocity OR being in blast jumping condition
-    local isGrounded = IsOnGround(player)
     local velocity = player:EstimateAbsVelocity()
-    return (not isGrounded and velocity.z > 100) or player:InCond(81)
+    return (not IsOnGround(player) and velocity.z > 100) or player:InCond(81)
+end
+
+local function Initialize()
+    if initialized then return end
+    
+    local localPlayer = entities.GetLocalPlayer()
+    if not localPlayer then return end
+    
+    gravity = client.GetConVar("sv_gravity")
+    tickInterval = globals.TickInterval()
+    vStep = Vector3(0, 0, localPlayer:GetPropFloat("localdata", "m_flStepSize") / 2)
+    
+    impactPolygon = ImpactPolygon:new()
+    
+    initialized = true
+end
+
+local function Cleanup()
+    if impactPolygon then
+        impactPolygon:destroy()
+        impactPolygon = nil
+    end
+    
+    vPath = {}
+    lastPosition = {}
+    priorPrediction = {}
+    projectileSimulation2 = Vector3(0, 0, 0)
+    initialized = false
 end
 
 local function OnCreateMove()
-    -- Initialize resources if needed
     Initialize()
-    
-    -- Don't proceed if not initialized
     if not initialized then return end
+    
+    local curTime = globals.RealTime()
+    if curTime - lastPredictionTime < PREDICTION_INTERVAL then
+        return
+    end
+    lastPredictionTime = curTime
     
     local me = entities.GetLocalPlayer()
     if not me or not me:IsAlive() then return end
-    
-    local tick_interval = globals.TickInterval()
-    local gravity = client.GetConVar("sv_gravity")
-    local stepSize = me:GetPropFloat("localdata", "m_flStepSize")
+
+    -- Clear old path data
     vPath = {}
     projectileSimulation2 = Vector3(0, 0, 0)
 
@@ -260,25 +252,22 @@ local function OnCreateMove()
     end
 
     if bestTarget then
-        -- Get the player's actual view position as starting point
         local origin = bestTarget:GetAbsOrigin()
         local viewOffset = bestTarget:GetPropVector("localdata", "m_vecViewOffset[0]")
         local aimPos = origin + viewOffset
         
-        -- Start prediction from view height
         local lastP = aimPos
         local lastV = bestTarget:EstimateAbsVelocity()
         local lastG = IsOnGround(bestTarget)
-        local vStep = Vector3(0, 0, stepSize / 2)
 
         vPath[1] = lastP
 
-        for i = 1, 66 do
-            local pos = lastP + lastV * tick_interval
+        for i = 1, config.predictionTicks do
+            local pos = lastP + lastV * tickInterval
             local vel = lastV
             local onGround = lastG
 
-            local wallTrace = engine.TraceHull(lastP, pos, vHitbox[1], vHitbox[2], MASK_PLAYERSOLID)
+            local wallTrace = engine.TraceHull(lastP, pos, vHitbox[1], vHitbox[2], traceMask)
             if wallTrace.fraction < 1 then
                 local normal = wallTrace.plane
                 local angle = math.deg(math.acos(normal:Dot(Vector3(0, 0, 1))))
@@ -289,7 +278,7 @@ local function OnCreateMove()
                 pos.x, pos.y = wallTrace.endpos.x, wallTrace.endpos.y
             end
 
-            local downTrace = engine.TraceHull(pos + vStep, pos - vStep, vHitbox[1], vHitbox[2], MASK_PLAYERSOLID)
+            local downTrace = engine.TraceHull(pos + vStep, pos - vStep, vHitbox[1], vHitbox[2], traceMask)
             if downTrace.fraction < 1 then
                 pos = downTrace.endpos
                 onGround = true
@@ -297,14 +286,14 @@ local function OnCreateMove()
                 projectileSimulation2 = pos
             else
                 onGround = false
-                vel.z = vel.z - gravity * tick_interval
+                vel.z = vel.z - gravity * tickInterval
             end
 
             lastP, lastV, lastG = pos, vel, onGround
             vPath[i + 1] = pos
 
-            if i <= 20 then
-                local currentTick = 20 - i
+            if i <= config.hitChanceWindow then
+                local currentTick = config.hitChanceWindow - i
                 local playerIdx = bestTarget:GetIndex()
                 lastPosition[playerIdx] = lastPosition[playerIdx] or {}
                 priorPrediction[playerIdx] = priorPrediction[playerIdx] or {}
@@ -319,15 +308,11 @@ local function OnCreateMove()
 end
 
 local function OnDraw()
-    -- Initialize resources if needed
-    Initialize()
-    
-    -- Don't proceed if not initialized or game UI is visible
     if not initialized or engine.Con_IsVisible() or engine.IsGameUIVisible() then 
         return 
     end
     
-    if not vPath or #vPath == 0 then return end
+    if #vPath == 0 then return end
     
     draw.Color(255 - math.floor((hitChance / 100) * 255), math.floor((hitChance / 100) * 255), 0, 255)
     
@@ -342,33 +327,32 @@ local function OnDraw()
             if screenPos1 and screenPos2 and (not (config.pathStyle == 3) or i % 2 == 1) then
                 draw.Line(screenPos1[1], screenPos1[2], screenPos2[1], screenPos2[2])
             end
-        end
-
-        if config.pathStyle == 2 then
+        elseif config.pathStyle == 2 then
             L_line(pos1, pos2, 10)
         end
     end
 
-    -- Draw landing point indicator with polygon
     if projectileSimulation2.x ~= 0 or projectileSimulation2.y ~= 0 or projectileSimulation2.z ~= 0 then
-        -- Only draw if the landing point is significantly different from the start point
         local startPoint = vPath[1]
         local distanceToLanding = (projectileSimulation2 - startPoint):Length()
         
-        -- Only draw if they're more than 100 units away from their predicted landing
         if distanceToLanding > config.minLandingDistance then
             local lastPointIndex = #vPath
             if lastPointIndex >= 2 then
                 if config.showPolygon and impactPolygon then
                     local direction = vPath[lastPointIndex] - vPath[lastPointIndex - 1]
-                    local plane = Normalize(direction)
+                    local plane = direction:Length() > 0 and Vector3(
+                        direction.x / direction:Length(),
+                        direction.y / direction:Length(),
+                        direction.z / direction:Length()
+                    ) or Vector3(0, 0, 1)
                     impactPolygon:draw(plane, projectileSimulation2)
                 end
 
                 if config.showLandingX then
                     local screenPos = client.WorldToScreen(projectileSimulation2)
                     if screenPos then
-                        draw.Line(screenPos[1] + 10, screenPos[2], screenPos[1] - 10, screenPos[2])
+                        draw.Line(screenPos[1] - 10, screenPos[2], screenPos[1] + 10, screenPos[2])
                         draw.Line(screenPos[1], screenPos[2] - 10, screenPos[1], screenPos[2] + 10)
                     end
                 end
@@ -377,8 +361,6 @@ local function OnDraw()
     end
 end
 
--- Register cleanup callback
-callbacks.Register("Unload", Cleanup)
-
 callbacks.Register("CreateMove", "PathVisualization.CreateMove", OnCreateMove)
 callbacks.Register("Draw", "PathVisualization.Draw", OnDraw)
+callbacks.Register("Unload", Cleanup)
