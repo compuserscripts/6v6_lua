@@ -63,3 +63,5 @@ proper unload and register for all scripts
 
 when drawing chams in focusfire/antiair use getmovechild and peer to color the entire model/weapon so all attachments
 
+sniper rendertarget scope, so we can zoom further without using fov because thats detectable. draw black lines so we can aim too.  make scrollable
+
