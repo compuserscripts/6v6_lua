@@ -16,8 +16,6 @@ option to add slight randomness to uber percentage
 
 indicator when to det when people are near stickies
 
-cloak and dagger stop
-
 killfeed colors for different classes. only for enemy
 
 esp lasso - same as anti air but for all classes, able to specify different color boxes and tracers for each class. maybe alpha based on distance? also only visible mode for all of them
