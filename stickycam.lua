@@ -125,13 +125,50 @@ local function CheckPlayerVisibility(startPos, player)
     return trace.fraction > 0.99 or trace.entity == player
 end
 
+local function IsStickyOnCeiling(sticky)
+    local pos = sticky:GetAbsOrigin()
+    
+    -- Check if there's something solid above us and nothing below
+    local ceilingTrace = engine.TraceLine(pos, pos + Vector3(0, 0, 10), MASK_SOLID)
+    local floorTrace = engine.TraceLine(pos, pos - Vector3(0, 0, 10), MASK_SOLID)
+    
+    return ceilingTrace.fraction < 0.3 and floorTrace.fraction > 0.7
+end
+
 local function GetStickyNormal(sticky)
     local pos = sticky:GetAbsOrigin()
-    local trace = engine.TraceLine(pos + Vector3(0, 0, 1), pos - Vector3(0, 0, 5), MASK_SOLID)
-    if trace.fraction < 1 then
-        return trace.plane
+    local upTrace = engine.TraceLine(pos, pos + Vector3(0, 0, 5), MASK_SOLID)
+    
+    -- If there's something very close above us, we're probably on a ceiling
+    if upTrace.fraction < 0.2 then
+        return Vector3(0, 0, 1)  -- Return upward normal
     end
-    return Vector3(0, 0, 1)
+    
+    local downTrace = engine.TraceLine(pos, pos - Vector3(0, 0, 5), MASK_SOLID)
+    if downTrace.fraction < 1 then
+        return downTrace.plane
+    end
+    
+    return Vector3(0, 0, 1)  -- Default to up if no surface found
+end
+
+local function CalculateCameraOffset(stickyPos, normal)
+    -- Check which direction is blocked
+    local upTrace = engine.TraceLine(stickyPos, stickyPos + Vector3(0, 0, 15), MASK_SOLID)
+    local downTrace = engine.TraceLine(stickyPos, stickyPos - Vector3(0, 0, 15), MASK_SOLID)
+    
+    -- If up is blocked but down is open, force camera downward
+    if upTrace.fraction < 0.5 and downTrace.fraction > 0.5 then
+        return stickyPos - Vector3(0, 0, CAMERA_OFFSET)
+    end
+    
+    -- If down is blocked but up is open, force camera upward
+    if downTrace.fraction < 0.5 and upTrace.fraction > 0.5 then
+        return stickyPos + Vector3(0, 0, CAMERA_OFFSET)
+    end
+    
+    -- If neither is clearly blocked, use the normal
+    return stickyPos + normal * CAMERA_OFFSET
 end
 
 local function FindNearestVisiblePlayer(position)
@@ -413,7 +450,7 @@ callbacks.Register("CreateMove", function(cmd)
     if current_sticky and current_sticky:IsValid() and not current_sticky:IsDormant() then
         local stickyPos = current_sticky:GetAbsOrigin()
         local normal = GetStickyNormal(current_sticky)
-        local cameraPos = stickyPos + normal * CAMERA_OFFSET
+        local cameraPos = CalculateCameraOffset(stickyPos, normal)
         
         current_target = FindNearestVisiblePlayer(cameraPos)
         
@@ -428,6 +465,7 @@ callbacks.Register("CreateMove", function(cmd)
     end
 end)
 
+-- Update PostRenderView to use new camera positioning
 callbacks.Register("PostRenderView", function(view)
     if not materials_initialized and not InitializeMaterials() then
         return
@@ -440,7 +478,7 @@ callbacks.Register("PostRenderView", function(view)
     local customView = view
     local normal = GetStickyNormal(current_sticky)
     local stickyPos = current_sticky:GetAbsOrigin()
-    local cameraOrigin = stickyPos + normal * CAMERA_OFFSET
+    local cameraOrigin = CalculateCameraOffset(stickyPos, normal)
     customView.origin = cameraOrigin
     customView.angles = smoothed_angles
 
