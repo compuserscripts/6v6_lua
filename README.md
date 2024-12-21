@@ -76,3 +76,7 @@ C:\Users\User\AppData\Local\stickycam.lua :130: bad argument #1 to 'add' (Using 
 modified projectile camera, make it not show flying stickies but instead if the last sticky we shot is stationary AND it has line of sight to a player, we display the window and display the camera from the perspective of the sticky, in first person and it will lock on to and follow the nearest person it has line of sight to in first person, from stickys perspective. kind of like a security camera. 
 
 show taunter through walls chams
+
+debug distance between player and active camera, to figure out max range before dormant. add a warning
+
+indicator when player in range of explosion range of active camera
