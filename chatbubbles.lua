@@ -10,6 +10,7 @@ local BUBBLE_MAX_WIDTH = 250
 local BUBBLE_PADDING = 5
 local SMOOTHING_FACTOR = 0.1
 local BACKGROUND_ALPHA = 0.78
+local alpha = 255
 
 -- Define voice menu data
 local VOICE_MENU = {
@@ -57,32 +58,6 @@ local SETTINGS = {
     SMOOTHING_FACTOR = 0.1
 }
 
--- Add safety checks for settings
-local function ensureSettings()
-    if SETTINGS == nil then
-        SETTINGS = {
-            SMOOTH_MOVEMENT = true,
-            SHOW_BACKGROUND = true,
-            SMOOTHING_FACTOR = 0.1
-        }
-    end
-end
-
--- Menu toggle commands with safety checks
-local function setupCommands()
-    if not client or not client.Command then return end
-    
-    client.Command('alias "toggle_chat_smooth" "lua.run ensureSettings(); SETTINGS.SMOOTH_MOVEMENT = not SETTINGS.SMOOTH_MOVEMENT; if SETTINGS.SMOOTH_MOVEMENT then client.ChatPrintf(\\"\\x01[\\x07FF4040Chat Display\\x01] Smooth movement: \\x0700FF00ON\\x01\\") else client.ChatPrintf(\\"\\x01[\\x07FF4040Chat Display\\x01] Smooth movement: \\x07FF0000OFF\\x01\\") end"', true)
-    client.Command('alias "toggle_chat_bg" "lua.run ensureSettings(); SETTINGS.SHOW_BACKGROUND = not SETTINGS.SHOW_BACKGROUND; if SETTINGS.SHOW_BACKGROUND then client.ChatPrintf(\\"\\x01[\\x07FF4040Chat Display\\x01] Background: \\x0700FF00ON\\x01\\") else client.ChatPrintf(\\"\\x01[\\x07FF4040Chat Display\\x01] Background: \\x07FF0000OFF\\x01\\") end"', true)
-end
-
-local function init()
-    ensureSettings()
-    setupCommands()
-end
-
--- Call init on script load
-init()
 local screenW, screenH = 0, 0
 
 -- Local utility functions
@@ -347,7 +322,6 @@ local function drawChatBubbles()
             if messageAge > MESSAGE_LIFETIME then goto nextMessage end
 
             -- Calculate alpha for fade effect
-            local alpha = 255
             if messageAge > FADE_START_TIME then
                 alpha = math.max(0, 255 * (1 - (messageAge - FADE_START_TIME) / (MESSAGE_LIFETIME - FADE_START_TIME)))
             end
