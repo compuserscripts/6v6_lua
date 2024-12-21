@@ -29,12 +29,12 @@ local cameraTexture = nil
 local cameraMaterial = nil
 local invisibleMaterial = nil
 
-local STICKY_DORMANT_DISTANCE = 1500  -- stickies go dormant around min 800-1200 max 2000-2200 units
+local STICKY_DORMANT_DISTANCE = 1200  -- stickies go dormant around min 800-1200 max 2000-2200 units
 local STICKY_WARNING_THRESHOLD = 0.70  -- 0.75 = Show warning at 75% of max distance (around 1500 units)
 local warning_font = draw.CreateFont("Tahoma", 16, 800, FONTFLAG_OUTLINE)
 
 local chamsMaterial = nil
-local STICKY_CHAMS_DISTANCE = 146 -- max distance for chams in hammer units
+local STICKY_CHAMS_DISTANCE = 166 -- max distance for chams in hammer units
 
 -- Initialize chams material
 local function InitializeChams()
