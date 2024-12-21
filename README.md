@@ -74,3 +74,5 @@ show taunter through walls chams
 destroy window when player dies
 
 scout scattergun meatshot triggerbot https://github.com/OthmanAba/TeamFortress2/blob/1b81dded673d49adebf4d0958e52236ecc28a956/tf2_src/game/shared/tf/tf_fx_shared.cpp#L22
+
+auto wallbug
