@@ -1,7 +1,7 @@
 -- Create a font at the beginning of the script
 local font = draw.CreateFont("Arial", 14, 400)
 
--- Constants
+-- Constants 
 local MAX_MESSAGES_PER_PLAYER = 3
 local MAX_GLOBAL_MESSAGES = 10
 local MESSAGE_LIFETIME = 10
@@ -45,10 +45,44 @@ local VOICE_MENU = {
     }
 }
 
--- State variables
+-- Global state
 local chatLog = {}
 local globalChatLog = {}
 local voiceTimers = {}
+
+-- Settings
+local SETTINGS = {
+    SMOOTH_MOVEMENT = true,
+    SHOW_BACKGROUND = true,
+    SMOOTHING_FACTOR = 0.1
+}
+
+-- Add safety checks for settings
+local function ensureSettings()
+    if SETTINGS == nil then
+        SETTINGS = {
+            SMOOTH_MOVEMENT = true,
+            SHOW_BACKGROUND = true,
+            SMOOTHING_FACTOR = 0.1
+        }
+    end
+end
+
+-- Menu toggle commands with safety checks
+local function setupCommands()
+    if not client or not client.Command then return end
+    
+    client.Command('alias "toggle_chat_smooth" "lua.run ensureSettings(); SETTINGS.SMOOTH_MOVEMENT = not SETTINGS.SMOOTH_MOVEMENT; if SETTINGS.SMOOTH_MOVEMENT then client.ChatPrintf(\\"\\x01[\\x07FF4040Chat Display\\x01] Smooth movement: \\x0700FF00ON\\x01\\") else client.ChatPrintf(\\"\\x01[\\x07FF4040Chat Display\\x01] Smooth movement: \\x07FF0000OFF\\x01\\") end"', true)
+    client.Command('alias "toggle_chat_bg" "lua.run ensureSettings(); SETTINGS.SHOW_BACKGROUND = not SETTINGS.SHOW_BACKGROUND; if SETTINGS.SHOW_BACKGROUND then client.ChatPrintf(\\"\\x01[\\x07FF4040Chat Display\\x01] Background: \\x0700FF00ON\\x01\\") else client.ChatPrintf(\\"\\x01[\\x07FF4040Chat Display\\x01] Background: \\x07FF0000OFF\\x01\\") end"', true)
+end
+
+local function init()
+    ensureSettings()
+    setupCommands()
+end
+
+-- Call init on script load
+init()
 local screenW, screenH = 0, 0
 
 -- Local utility functions
@@ -68,6 +102,9 @@ local function wrapText(text, maxWidth)
 
     local lines = {}
     local currentLine = ""
+    
+    -- Set white color for text measurement
+    draw.Color(255, 255, 255, 255)
     
     for _, word in ipairs(words) do
         local testLine = currentLine ~= "" and (currentLine .. " " .. word) or word
@@ -129,12 +166,40 @@ local function handleChatMessage(msg)
     local bf = msg:GetBitBuffer()
     if not bf then return end
 
+    -- Read the first components
     local entityIndex = bf:ReadByte()
-    bf:ReadByte() -- Skip bWantsToChat
-    bf:ReadString(256) -- Skip format string
-    local playerName = bf:ReadString(256)
-    local chatText = bf:ReadString(256)
+    bf:ReadByte() -- Skip chat type
+    local content = bf:ReadString(256)
+    local name = bf:ReadString(256)
+    local message = bf:ReadString(256)
+    local param3 = bf:ReadString(256)
+    local param4 = bf:ReadString(256)
 
+    -- Handle Valve/Casual server format
+    if content:match("TF_Chat") then
+        if name and message and name ~= "" and message ~= "" then
+            addChatMessage(message, name, entityIndex, false)
+            return
+        end
+    end
+
+    -- Handle Community server format
+    local playerName, chatText
+    local parts = {content, name, message, param3, param4}
+    
+    for _, part in ipairs(parts) do
+        if part and part ~= "" then
+            -- Try to split on "Name: Message" format
+            local n, m = part:match("(.+): (.+)")
+            if n and m then
+                playerName = n:gsub("%*DEAD%*", ""):gsub("%*TEAM%*", ""):gsub("^%s*(.-)%s*$", "%1")
+                chatText = m
+                break
+            end
+        end
+    end
+
+    -- If we found both name and message, use them
     if playerName and chatText then
         addChatMessage(chatText, playerName, entityIndex, false)
     end
@@ -198,67 +263,85 @@ local function drawChatbox()
     end
 end
 
-local function drawChatBubbles()
-    -- Debug info
-    draw.Color(255, 255, 255, 255)
-    draw.Text(10, 10, "Debug Info:")
-    
-    local players = entities.FindByClass("CTFPlayer")
-    draw.Text(10, 30, "Found players: " .. #players)
-    
-    local localPlayer = entities.GetLocalPlayer()
-    if not localPlayer then 
-        draw.Text(10, 50, "No local player found")
-        return 
+local function drawChatBubble(entry, screenPos, yOffset, alpha)
+    -- Prepare text
+    local displayText = entry.isVoice and ("(Voice) " .. entry.message) or entry.message
+    local wrappedLines = wrapText(displayText, BUBBLE_MAX_WIDTH - (BUBBLE_PADDING * 2))
+
+    -- Calculate bubble dimensions
+    local bubbleWidth, bubbleHeight = 0, 0
+    for _, line in ipairs(wrappedLines) do
+        local lineWidth, lineHeight = draw.GetTextSize(line)
+        bubbleWidth = math.max(bubbleWidth, lineWidth)
+        bubbleHeight = bubbleHeight + lineHeight
     end
+
+    bubbleWidth = math.min(bubbleWidth + (BUBBLE_PADDING * 2), BUBBLE_MAX_WIDTH)
+    bubbleHeight = bubbleHeight + (BUBBLE_PADDING * 2) + (#wrappedLines - 1) * 2
+
+    -- Calculate target bubble position
+    local bubbleX = math.max(bubbleWidth/2, math.min(screenW - bubbleWidth/2, screenPos[1]))
+    local bubbleY = math.max(bubbleHeight, math.min(screenH - 20, screenPos[2] - bubbleHeight - 20 - yOffset))
+
+    -- Smooth position
+    if not entry.smoothPos then
+        entry.smoothPos = {x = bubbleX, y = bubbleY}
+    else
+        entry.smoothPos.x = entry.smoothPos.x + (bubbleX - entry.smoothPos.x) * SMOOTHING_FACTOR
+        entry.smoothPos.y = entry.smoothPos.y + (bubbleY - entry.smoothPos.y) * SMOOTHING_FACTOR
+    end
+
+    -- Draw background
+    local bgAlpha = math.floor(BACKGROUND_ALPHA * alpha)
+    if SETTINGS.SHOW_BACKGROUND then
+        draw.Color(0, 0, 0, bgAlpha)
+        draw.FilledRect(
+            math.floor(entry.smoothPos.x - bubbleWidth/2),
+            math.floor(entry.smoothPos.y - bubbleHeight),
+            math.floor(entry.smoothPos.x + bubbleWidth/2),
+            math.floor(entry.smoothPos.y)
+        )
+    end
+
+    -- Draw text
+    draw.Color(255, 255, 255, math.floor(alpha))
+    local yTextOffset = 0
+    for _, line in ipairs(wrappedLines) do
+        local _, lineHeight = draw.GetTextSize(line)
+        draw.TextShadow(
+            math.floor(entry.smoothPos.x - bubbleWidth/2 + BUBBLE_PADDING),
+            math.floor(entry.smoothPos.y - bubbleHeight + BUBBLE_PADDING + yTextOffset),
+            line
+        )
+        yTextOffset = yTextOffset + lineHeight + 2
+    end
+
+    return bubbleHeight + 5
+end
+
+local function drawChatBubbles()
+    local players = entities.FindByClass("CTFPlayer")
+    local localPlayer = entities.GetLocalPlayer()
+    if not localPlayer then return end
     
     local currentTime = globals.RealTime()
-    local debugY = 70
 
-    for i, player in ipairs(players) do
+    for _, player in ipairs(players) do
         if not player:IsValid() or player == localPlayer then goto continue end
-
-        -- Debug player info
-        local playerName = player:GetName() or "Unknown"
-        draw.Text(10, debugY, "Player " .. i .. ": " .. playerName)
-        debugY = debugY + 20
 
         -- Get player head position
         local origin = player:GetAbsOrigin()
-        if not origin then
-            draw.Text(10, debugY, "- No origin for " .. playerName)
-            debugY = debugY + 20
-            goto continue
-        end
+        if not origin then goto continue end
         
         local headPos = origin + Vector3(0, 0, 75)
         local screenPos = client.WorldToScreen(headPos)
-        
-        if not screenPos then
-            draw.Text(10, debugY, "- No screen pos for " .. playerName)
-            debugY = debugY + 20
-            goto continue
-        end
-        
-        -- Draw dot at head position
-        draw.Color(255, 0, 0, 255)
-        draw.FilledRect(screenPos[1]-3, screenPos[2]-3, screenPos[1]+3, screenPos[2]+3)
-        
-        -- Check for messages
+        if not screenPos then goto continue end
+
         local playerIndex = player:GetIndex()
         local messages = chatLog[playerIndex]
+        if not messages then goto continue end
         
-        draw.Color(255, 255, 255, 255)
-        if not messages then
-            draw.Text(10, debugY, "- No messages for " .. playerName)
-            debugY = debugY + 20
-            goto continue
-        end
-        
-        draw.Text(10, debugY, "- Has " .. #messages .. " messages")
-        debugY = debugY + 20
         local yOffset = 0
-
         for _, entry in ipairs(messages) do
             local messageAge = currentTime - entry.time
             if messageAge > MESSAGE_LIFETIME then goto nextMessage end
@@ -269,72 +352,7 @@ local function drawChatBubbles()
                 alpha = math.max(0, 255 * (1 - (messageAge - FADE_START_TIME) / (MESSAGE_LIFETIME - FADE_START_TIME)))
             end
 
-            -- Prepare text
-            local displayText = entry.isVoice and ("(Voice) " .. entry.message) or entry.message
-            local wrappedLines = wrapText(displayText, BUBBLE_MAX_WIDTH - (BUBBLE_PADDING * 2))
-
-            -- Calculate bubble dimensions
-            local bubbleWidth, bubbleHeight = 0, 0
-            for _, line in ipairs(wrappedLines) do
-                local lineWidth, lineHeight = draw.GetTextSize(line)
-                bubbleWidth = math.max(bubbleWidth, lineWidth)
-                bubbleHeight = bubbleHeight + lineHeight
-            end
-
-            bubbleWidth = math.min(bubbleWidth + (BUBBLE_PADDING * 2), BUBBLE_MAX_WIDTH)
-            bubbleHeight = bubbleHeight + (BUBBLE_PADDING * 2) + (#wrappedLines - 1) * 2
-
-            -- Calculate bubble position
-            local bubbleX, bubbleY
-            if screenPos then
-                bubbleX = math.max(bubbleWidth/2, math.min(screenW - bubbleWidth/2, screenPos[1]))
-                bubbleY = math.max(bubbleHeight, math.min(screenH - 20, screenPos[2] - bubbleHeight - 20 - yOffset))
-            else
-                -- Fallback positioning if WorldToScreen fails
-                local playerPos = player:GetAbsOrigin()
-                local localPos = localPlayer:GetAbsOrigin()
-                local relativePos = playerPos - localPos
-                
-                bubbleX = relativePos.x > 0 and (screenW - bubbleWidth/2) or (bubbleWidth/2)
-                bubbleY = screenH/2
-            end
-
-            -- Smooth position
-            if not entry.smoothPos then
-                entry.smoothPos = {x = bubbleX, y = bubbleY}
-            else
-                entry.smoothPos.x = entry.smoothPos.x + (bubbleX - entry.smoothPos.x) * SMOOTHING_FACTOR
-                entry.smoothPos.y = entry.smoothPos.y + (bubbleY - entry.smoothPos.y) * SMOOTHING_FACTOR
-            end
-
-            -- Debug visualization
-            -- Draw a small dot at the target position
-            draw.Color(255, 0, 0, 255)
-            draw.FilledRect(bubbleX-2, bubbleY-2, bubbleX+2, bubbleY+2)
-        
-            -- Draw bubble background
-            draw.Color(0, 0, 0, math.floor(BACKGROUND_ALPHA * alpha))
-            draw.FilledRect(
-                math.floor(entry.smoothPos.x - bubbleWidth/2),
-                math.floor(entry.smoothPos.y - bubbleHeight),
-                math.floor(entry.smoothPos.x + bubbleWidth/2),
-                math.floor(entry.smoothPos.y)
-            )
-
-            -- Draw text
-            draw.Color(255, 255, 255, math.floor(alpha))
-            local yTextOffset = 0
-            for _, line in ipairs(wrappedLines) do
-                local _, lineHeight = draw.GetTextSize(line)
-                draw.TextShadow(
-                    math.floor(entry.smoothPos.x - bubbleWidth/2 + BUBBLE_PADDING),
-                    math.floor(entry.smoothPos.y - bubbleHeight + BUBBLE_PADDING + yTextOffset),
-                    line
-                )
-                yTextOffset = yTextOffset + lineHeight + 2
-            end
-
-            yOffset = yOffset + bubbleHeight + 5
+            yOffset = yOffset + drawChatBubble(entry, screenPos, yOffset, alpha)
             
             ::nextMessage::
         end
@@ -366,24 +384,3 @@ callbacks.Register("DispatchUserMessage", "ChatDisplayMessage", handleChatMessag
 callbacks.Register("DispatchUserMessage", "ChatDisplayVoice", handleVoiceMessage)
 callbacks.Register("Draw", "ChatDisplayDraw", onDraw)
 callbacks.Register("Unload", "ChatDisplayCleanup", cleanup)
-
--- Debug print function for chat messages
-local function debugPrintMessage(prefix, message, playerName, entityIndex, isVoice)
-    print(string.format("[DEBUG] %s: Message='%s' Player='%s' Index=%s Voice=%s", 
-        prefix,
-        tostring(message),
-        tostring(playerName),
-        tostring(entityIndex),
-        tostring(isVoice)
-    ))
-end
-
--- Modify addChatMessage to include debug output
-local oldAddChatMessage = addChatMessage
-addChatMessage = function(message, playerName, entityIndex, isVoice)
-    debugPrintMessage("Adding Message", message, playerName, entityIndex, isVoice)
-    oldAddChatMessage(message, playerName, entityIndex, isVoice)
-end
-
--- Notify user
-client.ChatPrintf("\x01[\x07FF4040Chat Display\x01] Script loaded with debug mode enabled!")
