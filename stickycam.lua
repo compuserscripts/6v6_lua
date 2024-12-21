@@ -33,6 +33,28 @@ local STICKY_DORMANT_DISTANCE = 1500  -- stickies go dormant around min 800-1200
 local STICKY_WARNING_THRESHOLD = 0.70  -- 0.75 = Show warning at 75% of max distance (around 1500 units)
 local warning_font = draw.CreateFont("Tahoma", 16, 800, FONTFLAG_OUTLINE)
 
+local chamsMaterial = nil
+local STICKY_CHAMS_DISTANCE = 146 -- max distance for chams in hammer units
+
+-- Initialize chams material
+local function InitializeChams()
+    if not chamsMaterial then
+        chamsMaterial = materials.Create("sticky_target_chams", [[
+            "VertexLitGeneric"
+            {
+                "$basetexture" "vgui/white_additive"
+                "$bumpmap" "vgui/white_additive"
+                "$color2" "[0.8 0.2 0.2]"
+                "$selfillum" "1"
+                "$ignorez" "1"
+                "$selfIllumFresnel" "1"
+                "$selfIllumFresnelMinMaxExp" "[0.1 0.2 0.3]"
+                "$selfillumtint" "[0.6 0.2 0.2]"
+            }
+        ]])
+    end
+end
+
 -- Font for HUD
 local font = draw.CreateFont("Tahoma", 12, 800, FONTFLAG_OUTLINE)
 
@@ -479,6 +501,31 @@ local function LogStickyDormantDistance()
     end
 end
 
+-- Check if target is within chams range
+local function IsTargetWithinRange(target, stickyPos)
+    if not target or not target:IsValid() or target:IsDormant() then return false end
+    
+    local targetPos = target:GetAbsOrigin()
+    local distance = (targetPos - stickyPos):Length()
+    return distance <= STICKY_CHAMS_DISTANCE
+end
+
+-- Register draw model callback for chams
+callbacks.Register("DrawModel", function(ctx)
+    if not current_sticky or not current_target or not chamsMaterial then return end
+    
+    local entity = ctx:GetEntity()
+    if not entity or not entity:IsValid() or entity:IsDormant() then return end
+    
+    -- Only apply chams to our current target
+    if entity == current_target then
+        local stickyPos = current_sticky:GetAbsOrigin()
+        if IsTargetWithinRange(current_target, stickyPos) then
+            ctx:ForcedMaterialOverride(chamsMaterial)
+        end
+    end
+end)
+
 -- Update the Draw callback to show correct counts
 callbacks.Register("Draw", function()
     if not current_sticky or not current_target then return end
@@ -635,6 +682,7 @@ end)
 
 -- Initialize materials when script loads
 InitializeMaterials()
+InitializeChams()
 
 callbacks.Register("Unload", function()
     materials_initialized = false
@@ -650,4 +698,5 @@ callbacks.Register("Unload", function()
     
     invisibleMaterial = nil
     cameraMaterial = nil
+    chamsMaterial = nil
 end)
