@@ -30,7 +30,7 @@ local cameraMaterial = nil
 local invisibleMaterial = nil
 
 local STICKY_DORMANT_DISTANCE = 1500  -- stickies go dormant around min 800-1200 max 2000-2200 units
-local STICKY_WARNING_THRESHOLD = 1.0  -- 0.75 = Show warning at 75% of max distance (around 1500 units)
+local STICKY_WARNING_THRESHOLD = 0.70  -- 0.75 = Show warning at 75% of max distance (around 1500 units)
 local warning_font = draw.CreateFont("Tahoma", 16, 800, FONTFLAG_OUTLINE)
 
 -- Font for HUD
