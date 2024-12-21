@@ -338,7 +338,7 @@ end
 -- Callback handlers
 local function onDraw()
     updateScreenSize()
-    drawChatbox()
+    --drawChatbox()
     drawChatBubbles()
 end
 
