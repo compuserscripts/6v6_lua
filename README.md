@@ -76,3 +76,11 @@ destroy window when player dies
 scout scattergun meatshot triggerbot https://github.com/OthmanAba/TeamFortress2/blob/1b81dded673d49adebf4d0958e52236ecc28a956/tf2_src/game/shared/tf/tf_fx_shared.cpp#L22
 
 auto wallbug
+
+wallssticking will not work on walls parallel to x and y axiis
+
+15 30 and 45 degrees, they are not aligned with the x and y axiis you can stick to them just fine.
+
+if you launch yourself towards a wall and quickly tap your left and right movement keys while against wall you can get stuck to it
+
+to hold your position, juts hold whatever key it is that got you stuck
