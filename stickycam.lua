@@ -29,6 +29,10 @@ local cameraTexture = nil
 local cameraMaterial = nil
 local invisibleMaterial = nil
 
+local STICKY_DORMANT_DISTANCE = 1500  -- stickies go dormant around min 800-1200 max 2000-2200 units
+local STICKY_WARNING_THRESHOLD = 1.0  -- 0.75 = Show warning at 75% of max distance (around 1500 units)
+local warning_font = draw.CreateFont("Tahoma", 16, 800, FONTFLAG_OUTLINE)
+
 -- Font for HUD
 local font = draw.CreateFont("Tahoma", 12, 800, FONTFLAG_OUTLINE)
 
@@ -399,11 +403,88 @@ local function UpdateUserInput()
     return false
 end
 
+local function GetStickyPlayerDistance(sticky)
+    if not sticky or not sticky:IsValid() then return 0 end
+    
+    local localPlayer = entities.GetLocalPlayer()
+    if not localPlayer then return 0 end
+    
+    local stickyPos = sticky:GetAbsOrigin()
+    local playerPos = localPlayer:GetAbsOrigin()
+    return (stickyPos - playerPos):Length()
+end
+
+local function DrawStickyRangeWarning()
+    if not current_sticky then return end
+    
+    local distance = GetStickyPlayerDistance(current_sticky)
+    local warning_distance = STICKY_DORMANT_DISTANCE * STICKY_WARNING_THRESHOLD
+    
+    -- Only show warning when approaching max range
+    if distance > warning_distance then
+        draw.SetFont(warning_font)
+        
+        local remaining_distance = STICKY_DORMANT_DISTANCE - distance
+        local warning_text = string.format("WARNING: Camera will go dormant in %.1f units", remaining_distance)
+        
+        -- Position warning at top of camera view, ensure integers
+        local text_w, text_h = draw.GetTextSize(warning_text)
+        local warning_x = math.floor(camera_x_position + (camera_width - text_w) / 2)
+        local warning_y = math.floor(camera_y_position + 10)
+        
+        -- Draw warning background
+        draw.Color(0, 0, 0, 180)
+        draw.FilledRect(
+            math.floor(warning_x - 5),
+            math.floor(warning_y - 5), 
+            math.floor(warning_x + text_w + 5),
+            math.floor(warning_y + text_h + 5)
+        )
+        
+        -- Draw warning text
+        draw.Color(255, 50, 50, 255)
+        draw.Text(warning_x, warning_y, warning_text)
+        
+        -- Draw distance bar, ensure integers
+        local bar_width = 200
+        local bar_height = 6
+        local bar_x = math.floor(camera_x_position + (camera_width - bar_width) / 2)
+        local bar_y = math.floor(warning_y + text_h + 8)
+        
+        -- Background bar
+        draw.Color(50, 50, 50, 180)
+        draw.FilledRect(math.floor(bar_x), math.floor(bar_y), 
+                          math.floor(bar_x + bar_width), math.floor(bar_y + bar_height))
+        
+        -- Progress bar
+        local progress = math.max(0, math.min(1, 1 - (distance / STICKY_DORMANT_DISTANCE)))
+        local progress_width = math.floor(bar_width * progress)
+        
+        -- Color changes from green to red based on distance
+        local r = math.floor(math.min(255, (1 - progress) * 510))
+        local g = math.floor(math.min(255, progress * 510))
+        draw.Color(r, g, 0, 255)
+        draw.FilledRect(math.floor(bar_x), math.floor(bar_y), 
+                       math.floor(bar_x + progress_width), math.floor(bar_y + bar_height))
+    end
+end
+
+-- Add distance logging to help determine actual dormant distance
+local function LogStickyDormantDistance()
+    if not current_sticky then return end
+    
+    local distance = GetStickyPlayerDistance(current_sticky)
+    if current_sticky:IsDormant() then
+        print(string.format("Sticky went dormant at distance: %.1f units", distance))
+    end
+end
+
 -- Update the Draw callback to show correct counts
 callbacks.Register("Draw", function()
     if not current_sticky or not current_target then return end
     
-    -- Previous drawing code stays the same until title...
+    DrawStickyRangeWarning()
+    LogStickyDormantDistance()
     
     local playerName = current_target:GetName() or "Unknown"
     local timeRemaining = math.max(0, TARGET_LOCK_DURATION - (globals.RealTime() - target_lock_time))
