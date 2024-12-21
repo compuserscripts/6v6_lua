@@ -80,3 +80,5 @@ show taunter through walls chams
 debug distance between player and active camera, to figure out max range before dormant. add a warning: distance before out of range.
 
 indicator when player in range of explosion range of active camera
+
+destroy window when player dies
