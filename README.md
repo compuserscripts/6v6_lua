@@ -69,14 +69,6 @@ make players we aim at fullbright
 C:\Users\User\AppData\Local\stickycam.lua :130: bad argument #1 to 'add' (Using an operator on a nil value. Maybe you used wrong variable name?)
 C:\Users\User\AppData\Local\stickycam.lua :130: bad argument #1 to 'add' (Using an operator on a nil value. Maybe you used wrong variable name?)
 
-
-
-if attached to the underside of a sloper roof, camera will go upwards instead of downwards so we extend through the roof, thus not seeing anything but the top of the roof underneath
-
 show taunter through walls chams
-
-debug distance between player and active camera, to figure out max range before dormant. add a warning: distance before out of range.
-
-indicator when player in range of explosion range of active camera
 
 destroy window when player dies
