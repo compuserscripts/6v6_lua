@@ -40,16 +40,10 @@ local STICKY_CHAMS_DISTANCE = 166 -- max distance for chams in hammer units
 local function InitializeChams()
     if not chamsMaterial then
         chamsMaterial = materials.Create("sticky_target_chams", [[
-            "VertexLitGeneric"
+            "UnlitGeneric"
             {
                 "$basetexture" "vgui/white_additive"
-                "$bumpmap" "vgui/white_additive"
-                "$color2" "[0.8 0.2 0.2]"
-                "$selfillum" "1"
-                "$ignorez" "1"
-                "$selfIllumFresnel" "1"
-                "$selfIllumFresnelMinMaxExp" "[0.1 0.2 0.3]"
-                "$selfillumtint" "[0.6 0.2 0.2]"
+                "$color2" "[1 0 0]"
             }
         ]])
     end
