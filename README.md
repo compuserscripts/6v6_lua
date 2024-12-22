@@ -84,3 +84,8 @@ wallssticking will not work on walls parallel to x and y axiis
 if you launch yourself towards a wall and quickly tap your left and right movement keys while against wall you can get stuck to it
 
 to hold your position, juts hold whatever key it is that got you stuck
+
+
+stickycam boolean followLatest - follow latest sticky
+
+boolean autoSwitchClosest - automatically switch to closest sticky
