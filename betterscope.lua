@@ -3,8 +3,10 @@ local fullscreen_texture = nil
 local fullscreen_material = nil
 local materials_initialized = false
 local base_fov = client.GetConVar("fov_desired") or 90
-local fov_offset = 90 -- Start
-local fov_step = 2
+local fov_offset = 0 -- Start at no offset
+local newZoomStyle = true -- Flag to toggle between zoom styles
+local zoom_step = 2 -- Default step for scrollwheel style
+local zoom_step_new = 0.75 -- Default step for movement keys style
 
 -- Get screen dimensions
 local screen_width, screen_height = draw.GetScreenSize()
@@ -68,17 +70,28 @@ callbacks.Register("SendStringCmd", function(cmd)
     end
 end)
 
--- Handle scroll wheel and FOV adjustments
+-- Handle zoom controls and FOV adjustments
 callbacks.Register("CreateMove", function(cmd)
     if IsScoped() then
-        if input.IsButtonPressed(112) or input.IsButtonDown(112) then -- MWHEEL_UP
-            cmd.buttons = cmd.buttons & ~MOUSE_WHEEL_UP
-            fov_offset = math.max(fov_offset - fov_step, -10)
-            print("MWHEEL_UP")
-        elseif input.IsButtonPressed(113) or input.IsButtonDown(113) then -- MWHEEL_DOWN
-            cmd.buttons = cmd.buttons & ~MOUSE_WHEEL_DOWN
-            fov_offset = math.min(fov_offset + fov_step, 120)
-            print("MWHEEL_DOWN")
+        if newZoomStyle then
+            -- Zoom in when forward (W) and right (D) are held
+            if (cmd.buttons & IN_FORWARD) ~= 0 and (cmd.buttons & IN_MOVERIGHT) ~= 0 then
+                fov_offset = math.max(fov_offset - zoom_step_new, -80)  -- Most zoomed in (90-80 = 10 FOV)
+            end
+            
+            -- Zoom out when forward (W) and left (A) are held
+            if (cmd.buttons & IN_FORWARD) ~= 0 and (cmd.buttons & IN_MOVELEFT) ~= 0 then
+                fov_offset = math.min(fov_offset + zoom_step_new, 30)  -- Most zoomed out (90+30 = 120 FOV)
+            end
+        else
+            -- Original scrollwheel style
+            if input.IsButtonPressed(112) or input.IsButtonDown(112) then -- MWHEEL_UP
+                cmd.buttons = cmd.buttons & ~MOUSE_WHEEL_UP
+                fov_offset = math.max(fov_offset - zoom_step, -10)
+            elseif input.IsButtonPressed(113) or input.IsButtonDown(113) then -- MWHEEL_DOWN
+                cmd.buttons = cmd.buttons & ~MOUSE_WHEEL_DOWN
+                fov_offset = math.min(fov_offset + zoom_step, 120)
+            end
         end
     end
 end)
