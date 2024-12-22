@@ -89,3 +89,5 @@ to hold your position, juts hold whatever key it is that got you stuck
 stickycam boolean followLatest - follow latest sticky
 
 boolean autoSwitchClosest - automatically switch to closest sticky
+
+spectaet script - only apply invisible chams if in first person
