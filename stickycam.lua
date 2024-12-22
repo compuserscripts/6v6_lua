@@ -25,8 +25,8 @@ local visited_stickies = {}
 
 -- Material state
 local materials_initialized = false
-local cameraTexture = nil
-local cameraMaterial = nil
+local stickyCameraTexture = nil
+local stickyCameraMaterial = nil
 local invisibleMaterial = nil
 
 local STICKY_DORMANT_DISTANCE = 1200  -- stickies go dormant around min 800-1200 max 2000-2200 units
@@ -62,21 +62,21 @@ local function InitializeMaterials()
     if materials_initialized then return true end
     
     -- Clean up any existing materials first
-    if cameraTexture then
-        draw.DeleteTexture(cameraTexture)
-        cameraTexture = nil
+    if stickyCameraTexture then
+        draw.DeleteTexture(stickyCameraTexture)
+        stickyCameraTexture = nil
     end
     
     -- Create texture
-    cameraTexture = materials.CreateTextureRenderTarget("camMaterial", camera_width, camera_height)
-    if not cameraTexture then
+    stickyCameraTexture = materials.CreateTextureRenderTarget("stickyCamMaterial", camera_width, camera_height)
+    if not stickyCameraTexture then
         print("Failed to create camera texture")
         return false
     end
     
     -- Create material using the texture
-    local materialName = "camMaterial"
-    cameraMaterial = materials.Create("camMaterial", string.format([[
+    local materialName = "stickyCamMaterial"
+    stickyCameraMaterial = materials.Create("stickyCamMaterial", string.format([[
         UnlitGeneric
         {
             $basetexture    "%s"
@@ -84,11 +84,11 @@ local function InitializeMaterials()
             $nofog         1
         }
     ]], materialName))
-    if not cameraMaterial then
+    if not stickyCameraMaterial then
         print("Failed to create camera material")
-        if cameraTexture then
-            draw.DeleteTexture(cameraTexture)
-            cameraTexture = nil
+        if stickyCameraTexture then
+            draw.DeleteTexture(stickyCameraTexture)
+            stickyCameraTexture = nil
         end
         return false
     end
@@ -599,7 +599,7 @@ callbacks.Register("PostRenderView", function(view)
         return
     end
     
-    if not current_sticky or not current_target or not cameraMaterial or not cameraTexture or not target_visible then 
+    if not current_sticky or not current_target or not stickyCameraMaterial or not stickyCameraTexture or not target_visible then 
         return 
     end
     
@@ -614,12 +614,12 @@ callbacks.Register("PostRenderView", function(view)
         return
     end
     
-    render.Push3DView(customView, E_ClearFlags.VIEW_CLEAR_COLOR | E_ClearFlags.VIEW_CLEAR_DEPTH, cameraTexture)
+    render.Push3DView(customView, E_ClearFlags.VIEW_CLEAR_COLOR | E_ClearFlags.VIEW_CLEAR_DEPTH, stickyCameraTexture)
     render.ViewDrawScene(true, true, customView)
     render.PopView()
     
     render.DrawScreenSpaceRectangle(
-        cameraMaterial, 
+        stickyCameraMaterial, 
         camera_x_position, camera_y_position,
         camera_width, camera_height,
         0, 0, camera_width, camera_height,
@@ -691,12 +691,12 @@ callbacks.Register("Unload", function()
     current_target = nil
     target_visible = false
     
-    if cameraTexture then
-        draw.DeleteTexture(cameraTexture)
-        cameraTexture = nil
+    if stickyCameraTexture then
+        draw.DeleteTexture(stickyCameraTexture)
+        stickyCameraTexture = nil
     end
     
     invisibleMaterial = nil
-    cameraMaterial = nil
+    stickyCameraMaterial = nil
     chamsMaterial = nil
 end)
