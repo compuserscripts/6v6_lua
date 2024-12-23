@@ -69,12 +69,6 @@ local function getVoiceCommandSubtitle(iMenu, iItem)
     return VOICE_MENU[iMenu] and VOICE_MENU[iMenu][iItem] or "Unknown Command"
 end
 
-local function getTextSize(text)
-    draw.SetFont(font) -- Set font before measuring
-    draw.Color(255, 255, 255, 255) -- Set color before measuring
-    return draw.GetTextSize(text)
-end
-
 local function wrapText(text, maxWidth)
     local words = {}
     for word in text:gmatch("%S+") do
@@ -84,9 +78,12 @@ local function wrapText(text, maxWidth)
     local lines = {}
     local currentLine = ""
     
+    -- Set white color for text measurement
+    draw.Color(255, 255, 255, 255)
+    
     for _, word in ipairs(words) do
         local testLine = currentLine ~= "" and (currentLine .. " " .. word) or word
-        local width = getTextSize(testLine)
+        local width = draw.GetTextSize(testLine)
         
         if width > maxWidth then
             if currentLine ~= "" then
@@ -226,7 +223,6 @@ local function drawChatbox()
     )
 
     -- Draw messages
-    draw.SetFont(font)
     draw.Color(255, 255, 255, 255)
     for i, entry in ipairs(globalChatLog) do
         if currentTime - entry.time <= MESSAGE_LIFETIME then
@@ -243,10 +239,6 @@ local function drawChatbox()
 end
 
 local function drawChatBubble(entry, screenPos, yOffset, alpha)
-    -- Set font and color before any text operations
-    draw.SetFont(font)
-    draw.Color(255, 255, 255, 255)
-    
     -- Prepare text
     local displayText = entry.isVoice and ("(Voice) " .. entry.message) or entry.message
     local wrappedLines = wrapText(displayText, BUBBLE_MAX_WIDTH - (BUBBLE_PADDING * 2))
@@ -254,7 +246,7 @@ local function drawChatBubble(entry, screenPos, yOffset, alpha)
     -- Calculate bubble dimensions
     local bubbleWidth, bubbleHeight = 0, 0
     for _, line in ipairs(wrappedLines) do
-        local lineWidth, lineHeight = getTextSize(line)
+        local lineWidth, lineHeight = draw.GetTextSize(line)
         bubbleWidth = math.max(bubbleWidth, lineWidth)
         bubbleHeight = bubbleHeight + lineHeight
     end
@@ -290,7 +282,7 @@ local function drawChatBubble(entry, screenPos, yOffset, alpha)
     draw.Color(255, 255, 255, math.floor(alpha))
     local yTextOffset = 0
     for _, line in ipairs(wrappedLines) do
-        local _, lineHeight = getTextSize(line)
+        local _, lineHeight = draw.GetTextSize(line)
         draw.TextShadow(
             math.floor(entry.smoothPos.x - bubbleWidth/2 + BUBBLE_PADDING),
             math.floor(entry.smoothPos.y - bubbleHeight + BUBBLE_PADDING + yTextOffset),
@@ -330,7 +322,6 @@ local function drawChatBubbles()
             if messageAge > MESSAGE_LIFETIME then goto nextMessage end
 
             -- Calculate alpha for fade effect
-            local alpha = 255
             if messageAge > FADE_START_TIME then
                 alpha = math.max(0, 255 * (1 - (messageAge - FADE_START_TIME) / (MESSAGE_LIFETIME - FADE_START_TIME)))
             end
