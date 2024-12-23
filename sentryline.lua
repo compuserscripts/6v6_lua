@@ -1,3 +1,6 @@
+-- Create font for level number display
+local levelFont = draw.CreateFont("Verdana", 16, 800)
+
 -- Configuration
 local CONFIG = {
     showLine = true,       -- Show aim line
@@ -158,6 +161,9 @@ local function GetAimLineEndPos(startPos, angles)
 end
 
 local function OnDraw()
+    -- Set up the font
+    draw.SetFont(levelFont)
+
     local localPlayer = entities.GetLocalPlayer()
     if not localPlayer then return end
     
@@ -222,6 +228,16 @@ local function OnDraw()
                     
                     Color(unpack(color))
                     DrawESPBox(x1, y1, x2, y2, color)
+                    
+                    -- Draw level number
+                    local isMini = sentry:GetPropBool("m_bMiniBuilding")
+                    local level = sentry:GetPropInt("m_iUpgradeLevel") or 0
+                    local levelText = isMini and "M" or tostring(level)
+                    
+                    -- Position the level text above the box
+                    local textWidth = draw.GetTextSize(levelText)
+                    Color(255, 255, 255, 255) -- White text
+                    draw.Text(x1 + (x2 - x1 - textWidth) / 2, y1 - 20, levelText)
                 end
             end
         end
