@@ -83,20 +83,20 @@ local function DrawESPBox(x1, y1, x2, y2, color)
         
         for i = 0, CONFIG.boxThickness do
             -- Top Left
-            Line(x1, y1 + i, floor(x1 + length), y1 + i)
-            Line(x1 + i, y1, x1 + i, floor(y1 + length))
+            Line(x1, y1 + i, x1 + length, y1 + i)
+            Line(x1 + i, y1, x1 + i, y1 + length)
             
             -- Top Right
-            Line(floor(x2 - length), y1 + i, x2, y1 + i)
-            Line(x2 - i, y1, x2 - i, floor(y1 + length))
+            Line(x2 - length, y1 + i, x2, y1 + i)
+            Line(x2 - i, y1, x2 - i, y1 + length)
             
             -- Bottom Left
-            Line(x1, y2 - i, floor(x1 + length), y2 - i)
-            Line(x1 + i, floor(y2 - length), x1 + i, y2)
+            Line(x1, y2 - i, x1 + length, y2 - i)
+            Line(x1 + i, y2 - length, x1 + i, y2)
             
             -- Bottom Right
-            Line(floor(x2 - length), y2 - i, x2, y2 - i)
-            Line(x2 - i, floor(y2 - length), x2 - i, y2)
+            Line(x2 - length, y2 - i, x2, y2 - i)
+            Line(x2 - i, y2 - length, x2 - i, y2)
         end
     else
         for i = 0, CONFIG.boxThickness do
@@ -237,7 +237,11 @@ local function OnDraw()
                     -- Position the level text above the box
                     local textWidth = draw.GetTextSize(levelText)
                     Color(255, 255, 255, 255) -- White text
-                    draw.Text(x1 + (x2 - x1 - textWidth) / 2, y1 - 20, levelText)
+                    
+                    -- Ensure coordinates are integers
+                    local textX = floor(x1 + floor((x2 - x1 - textWidth) / 2))
+                    local textY = floor(y1 - 20)
+                    draw.Text(textX, textY, levelText)
                 end
             end
         end
@@ -251,7 +255,9 @@ local function OnDraw()
             
             if startScreen and endScreen then
                 Color(CONFIG.lineColor.r, CONFIG.lineColor.g, CONFIG.lineColor.b, CONFIG.lineColor.a)
-                Line(startScreen[1], startScreen[2], endScreen[1], endScreen[2])
+                -- Ensure coordinates are integers
+                Line(floor(startScreen[1]), floor(startScreen[2]), 
+                     floor(endScreen[1]), floor(endScreen[2]))
             end
         end
         
