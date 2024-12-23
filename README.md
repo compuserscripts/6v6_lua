@@ -88,3 +88,5 @@ spectaet script - only apply invisible chams if in first person
 fix fading alpha < 2 for betterscope warning text same as chatbubbles
 
 sticky radius script
+
+small update/notification library - if present we load it and auto update scripts and display notifications
