@@ -6,7 +6,7 @@ local base_fov = client.GetConVar("fov_desired") or 90
 local fov_offset = 0 -- Start at no offset
 local newZoomStyle = true -- Flag to toggle between zoom styles
 local zoom_step = 2 -- Default step for scrollwheel style
-local zoom_step_new = 0.75 -- Default step for movement keys style
+local zoom_step_new = 1.75 -- Default step for movement keys style
 local storedCustomView = nil -- Store the custom view for hitboxes
 
 -- Colors for hitbox ESP
@@ -64,7 +64,7 @@ callbacks.Register("Draw", function()
     end
     
     -- Draw single pixel scope lines
-    draw.Color(0, 0, 0, 255)
+    draw.Color(255, 255, 255, 255)
     draw.FilledRect(0, screen_height/2, screen_width, screen_height/2 + 1)
     draw.FilledRect(screen_width/2, 0, screen_width/2 + 1, screen_height)
 
@@ -152,8 +152,8 @@ callbacks.Register("CreateMove", function(cmd)
                 fov_offset = math.max(fov_offset - zoom_step_new, -80)  -- Most zoomed in (90-80 = 10 FOV)
             end
             
-            -- Zoom out when forward (W) and left (A) are held
-            if (cmd.buttons & IN_FORWARD) ~= 0 and (cmd.buttons & IN_MOVELEFT) ~= 0 then
+            -- Zoom out when backward (S) and left (A) are held
+            if (cmd.buttons & IN_BACK) ~= 0 and (cmd.buttons & IN_MOVELEFT) ~= 0 then
                 fov_offset = math.min(fov_offset + zoom_step_new, 30)  -- Most zoomed out (90+30 = 120 FOV)
             end
         else
