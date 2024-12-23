@@ -36,6 +36,13 @@ local warning_font = draw.CreateFont("Tahoma", 16, 800, FONTFLAG_OUTLINE)
 local chamsMaterial = nil
 local STICKY_CHAMS_DISTANCE = 166 -- max distance for chams in hammer units
 
+-- Add this function at the beginning of your script
+local function IsDemoman()
+    local localPlayer = entities.GetLocalPlayer()
+    if not localPlayer then return false end
+    return localPlayer:GetPropInt("m_iClass") == 4  -- 4 is Demoman's class ID
+end
+
 -- Initialize chams material
 local function InitializeChams()
     if not chamsMaterial then
@@ -57,7 +64,7 @@ local function InitializeMaterials()
     
     -- Clean up any existing materials first
     if stickyCameraTexture then
-        draw.DeleteTexture(stickyCameraTexture) -- Changed from draw.DeleteTexture
+        materials.DestroyTextureRenderTarget(stickyCameraTexture) -- Changed from draw.DeleteTexture
         stickyCameraTexture = nil
     end
     
@@ -81,7 +88,7 @@ local function InitializeMaterials()
     if not stickyCameraMaterial then
         print("Failed to create camera material")
         if stickyCameraTexture then
-            draw.DeleteTexture(stickyCameraTexture) -- Changed this line too
+            materials.DestroyTextureRenderTarget(stickyCameraTexture) -- Changed this line too
             stickyCameraTexture = nil
         end
         return false
@@ -155,73 +162,109 @@ local function IsStickyOnCeiling(sticky)
     return ceilingTrace.fraction < 0.3 and floorTrace.fraction > 0.7
 end
 
+-- Add proper nil checks for Vector3 operations
+local function AddVectors(vec1, vec2)
+    if not vec1 or not vec2 then return Vector3(0,0,0) end
+    return Vector3(
+        vec1.x + vec2.x,
+        vec1.y + vec2.y, 
+        vec1.z + vec2.z
+    )
+end
+
+local function SubtractVectors(vec1, vec2)
+    if not vec1 or not vec2 then return Vector3(0,0,0) end
+    return Vector3(
+        vec1.x - vec2.x,
+        vec1.y - vec2.y,
+        vec1.z - vec2.z
+    )
+end
+
+local function MultiplyVector(vec, scalar)
+    if not vec then return Vector3(0,0,0) end
+    return Vector3(
+        vec.x * scalar,
+        vec.y * scalar,
+        vec.z * scalar
+    )
+end
+
 local function GetStickyNormal(sticky)
+    if not sticky or not sticky:IsValid() then
+        return Vector3(0, 0, 1) -- Default upward normal
+    end
+    
     local pos = sticky:GetAbsOrigin()
-    local upTrace = engine.TraceLine(pos, pos + Vector3(0, 0, 5), MASK_SOLID)
+    if not pos then return Vector3(0, 0, 1) end
+    
+    local upTrace = engine.TraceLine(pos, AddVectors(pos, Vector3(0, 0, 5)), MASK_SOLID)
     
     -- If there's something very close above us, we're probably on a ceiling
     if upTrace.fraction < 0.2 then
         return Vector3(0, 0, 1)  -- Return upward normal
     end
     
-    local downTrace = engine.TraceLine(pos, pos - Vector3(0, 0, 5), MASK_SOLID)
+    local downTrace = engine.TraceLine(pos, AddVectors(pos, Vector3(0, 0, -5)), MASK_SOLID)
     if downTrace.fraction < 1 then
-        return downTrace.plane
+        return downTrace.plane or Vector3(0, 0, 1)
     end
     
     return Vector3(0, 0, 1)  -- Default to up if no surface found
 end
 
 local function CalculateCameraOffset(stickyPos, normal)
+    if not stickyPos or not normal then
+        return Vector3(0, 0, 0)
+    end
+
     -- Check which direction is blocked
-    local upTrace = engine.TraceLine(stickyPos, stickyPos + Vector3(0, 0, 15), MASK_SOLID)
-    local downTrace = engine.TraceLine(stickyPos, stickyPos - Vector3(0, 0, 15), MASK_SOLID)
+    local upTrace = engine.TraceLine(
+        stickyPos, 
+        AddVectors(stickyPos, Vector3(0, 0, 15)), 
+        MASK_SOLID
+    )
+    
+    local downTrace = engine.TraceLine(
+        stickyPos, 
+        AddVectors(stickyPos, Vector3(0, 0, -15)), 
+        MASK_SOLID
+    )
     
     -- If up is blocked but down is open, force camera downward
     if upTrace.fraction < 0.5 and downTrace.fraction > 0.5 then
-        return stickyPos - Vector3(0, 0, CAMERA_OFFSET)
+        return AddVectors(stickyPos, Vector3(0, 0, -CAMERA_OFFSET))
     end
     
     -- If down is blocked but up is open, force camera upward
     if downTrace.fraction < 0.5 and upTrace.fraction > 0.5 then
-        return stickyPos + Vector3(0, 0, CAMERA_OFFSET)
+        return AddVectors(stickyPos, Vector3(0, 0, CAMERA_OFFSET))
     end
     
     -- If neither is clearly blocked, use the normal
-    return stickyPos + normal * CAMERA_OFFSET
+    return AddVectors(stickyPos, MultiplyVector(normal, CAMERA_OFFSET))
 end
 
 local function FindNearestVisiblePlayer(position)
+    if not position then return nil end
+    
     local localPlayer = entities.GetLocalPlayer()
     if not localPlayer then return nil end
-    
-    -- Debug positions
-    local screenPos = client.WorldToScreen(position)
-    if screenPos then
-        draw.Color(255, 0, 0, 255)
-        draw.FilledRect(screenPos[1]-2, screenPos[2]-2, screenPos[1]+2, screenPos[2]+2)
-    end
     
     if current_target and globals.RealTime() - target_lock_time < TARGET_LOCK_DURATION then
         if current_target:IsValid() and current_target:IsAlive() and not current_target:IsDormant() then
             if globals.RealTime() - last_occlusion_check > OCCLUSION_CHECK_INTERVAL then
                 target_visible = CheckPlayerVisibility(position, current_target)
                 last_occlusion_check = globals.RealTime()
-                
-                -- Debug target position
-                local targetScreenPos = client.WorldToScreen(current_target:GetAbsOrigin())
-                if targetScreenPos and target_visible then
-                    draw.Color(0, 255, 0, 255)
-                    draw.FilledRect(targetScreenPos[1]-3, targetScreenPos[2]-3, 
-                                  targetScreenPos[1]+3, targetScreenPos[2]+3)
-                end
             end
             
             if target_visible then
                 local targetPos = current_target:GetAbsOrigin()
-                local dist = (targetPos - position):Length()
-                if dist <= TARGET_SEARCH_RADIUS then
-                    return current_target
+                if targetPos then
+                    local delta = SubtractVectors(targetPos, position)
+                    if delta and delta:Length() <= TARGET_SEARCH_RADIUS then
+                        return current_target
+                    end
                 end
             end
         end
@@ -427,7 +470,12 @@ local function GetStickyPlayerDistance(sticky)
     
     local stickyPos = sticky:GetAbsOrigin()
     local playerPos = localPlayer:GetAbsOrigin()
-    return (stickyPos - playerPos):Length()
+    if not stickyPos or not playerPos then return 0 end
+    
+    local delta = SubtractVectors(stickyPos, playerPos)
+    if not delta then return 0 end
+    
+    return delta:Length()
 end
 
 local function DrawStickyRangeWarning()
@@ -563,23 +611,28 @@ callbacks.Register("Draw", function()
 end)
 
 callbacks.Register("CreateMove", function(cmd)
-    -- Handle user input first
-    UpdateUserInput()
+    if not IsDemoman() then return end
     
-    -- Regular sticky updates
+    UpdateUserInput()
     UpdateStickies()
     
     if current_sticky and current_sticky:IsValid() and not current_sticky:IsDormant() then
         local stickyPos = current_sticky:GetAbsOrigin()
-        local normal = GetStickyNormal(current_sticky)
-        local cameraPos = CalculateCameraOffset(stickyPos, normal)
-        
-        current_target = FindNearestVisiblePlayer(cameraPos)
-        
-        if current_target and target_visible then
-            local targetPos = current_target:GetAbsOrigin() + Vector3(0, 0, 50)
-            local targetAngles = CalculateAngles(cameraPos, targetPos)
-            smoothed_angles = LerpAngles(smoothed_angles, targetAngles, ANGLE_INTERPOLATION_SPEED)
+        if stickyPos then
+            local normal = GetStickyNormal(current_sticky)
+            local cameraPos = CalculateCameraOffset(stickyPos, normal)
+            
+            if cameraPos then
+                current_target = FindNearestVisiblePlayer(cameraPos)
+                
+                if current_target and target_visible then
+                    local targetPos = current_target:GetAbsOrigin()
+                    if targetPos then
+                        local targetAngles = CalculateAngles(cameraPos, AddVectors(targetPos, Vector3(0, 0, 50)))
+                        smoothed_angles = LerpAngles(smoothed_angles, targetAngles, ANGLE_INTERPOLATION_SPEED)
+                    end
+                end
+            end
         end
     else
         current_target = nil
@@ -589,6 +642,7 @@ end)
 
 -- Update PostRenderView to use new camera positioning
 callbacks.Register("PostRenderView", function(view)
+    if not IsDemoman() then return end
     if not materials_initialized and not InitializeMaterials() then
         return
     end
@@ -622,6 +676,7 @@ callbacks.Register("PostRenderView", function(view)
 end)
 
 callbacks.Register("Draw", function()
+    if not IsDemoman() then return end
     if not current_sticky or not current_target then return end
     
     draw.Color(235, 64, 52, 255)
@@ -664,6 +719,7 @@ callbacks.Register("Draw", function()
 end)
 
 callbacks.Register("DrawModel", function(ctx)
+    if not IsDemoman() then return end
     if not current_sticky or not invisibleMaterial then return end
     
     local ent = ctx:GetEntity()
@@ -686,7 +742,7 @@ callbacks.Register("Unload", function()
     target_visible = false
     
     if stickyCameraTexture then
-        draw.DeleteTexture(stickyCameraTexture) -- Changed here too
+        materials.DestroyTextureRenderTarget(stickyCameraTexture) -- Changed here too
         stickyCameraTexture = nil
     end
     
