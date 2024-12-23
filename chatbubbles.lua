@@ -9,10 +9,8 @@ local FADE_START_TIME = 7
 local BUBBLE_MAX_WIDTH = 250
 local BUBBLE_PADDING = 5
 local SMOOTHING_FACTOR = 0.1
-local BACKGROUND_ALPHA = 0.78
-local alpha = 255
 
--- Define voice menu data
+-- Voice menu data
 local VOICE_MENU = {
     [0] = {
         [0] = "MEDIC!",
@@ -50,14 +48,6 @@ local VOICE_MENU = {
 local chatLog = {}
 local globalChatLog = {}
 local voiceTimers = {}
-
--- Settings
-local SETTINGS = {
-    SMOOTH_MOVEMENT = true,
-    SHOW_BACKGROUND = true,
-    SMOOTHING_FACTOR = 0.1
-}
-
 local screenW, screenH = 0, 0
 
 -- Local utility functions
@@ -65,8 +55,40 @@ local function updateScreenSize()
     screenW, screenH = draw.GetScreenSize()
 end
 
+local function calculateOpacity(messageAge)
+    if messageAge <= FADE_START_TIME then
+        return 255
+    end
+    local fadeProgress = (messageAge - FADE_START_TIME) / (MESSAGE_LIFETIME - FADE_START_TIME)
+    -- Ensure we never return 0, and handle very small values
+    local opacity = math.floor(255 * math.max(0.01, 1 - fadeProgress))
+    if opacity < 2 then
+        return 0  -- If we're below 2, just return 0 instead
+    end
+    return opacity
+end
+
 local function getVoiceCommandSubtitle(iMenu, iItem)
     return VOICE_MENU[iMenu] and VOICE_MENU[iMenu][iItem] or "Unknown Command"
+end
+
+local function measureText(text)
+    draw.SetFont(font)
+    draw.Color(255, 255, 255, 255)
+    local width = draw.GetTextSize(text)
+    return width
+end
+
+local function ensureDrawState()
+    draw.SetFont(font)
+    draw.Color(255, 255, 255, 255)
+end
+
+local function measureTextSize(text)
+    draw.SetFont(font)
+    draw.Color(255, 255, 255, 255)
+    local width, height = draw.GetTextSize(text)
+    return width, height
 end
 
 local function wrapText(text, maxWidth)
@@ -78,12 +100,9 @@ local function wrapText(text, maxWidth)
     local lines = {}
     local currentLine = ""
     
-    -- Set white color for text measurement
-    draw.Color(255, 255, 255, 255)
-    
     for _, word in ipairs(words) do
         local testLine = currentLine ~= "" and (currentLine .. " " .. word) or word
-        local width = draw.GetTextSize(testLine)
+        local width = measureTextSize(testLine)
         
         if width > maxWidth then
             if currentLine ~= "" then
@@ -105,7 +124,6 @@ local function wrapText(text, maxWidth)
 end
 
 local function addChatMessage(message, playerName, entityIndex, isVoice)
-    -- Add to player-specific chat log
     if entityIndex then
         chatLog[entityIndex] = chatLog[entityIndex] or {}
         table.insert(chatLog[entityIndex], 1, {
@@ -121,7 +139,6 @@ local function addChatMessage(message, playerName, entityIndex, isVoice)
         end
     end
 
-    -- Add to global chat log
     table.insert(globalChatLog, 1, {
         message = message,
         time = globals.RealTime(),
@@ -134,14 +151,12 @@ local function addChatMessage(message, playerName, entityIndex, isVoice)
     end
 end
 
--- Message handlers
 local function handleChatMessage(msg)
-    if msg:GetID() ~= 4 then return end -- SayText2 only
+    if msg:GetID() ~= 4 then return end
 
     local bf = msg:GetBitBuffer()
     if not bf then return end
 
-    -- Read the first components
     local entityIndex = bf:ReadByte()
     bf:ReadByte() -- Skip chat type
     local content = bf:ReadString(256)
@@ -150,7 +165,6 @@ local function handleChatMessage(msg)
     local param3 = bf:ReadString(256)
     local param4 = bf:ReadString(256)
 
-    -- Handle Valve/Casual server format
     if content:match("TF_Chat") then
         if name and message and name ~= "" and message ~= "" then
             addChatMessage(message, name, entityIndex, false)
@@ -158,13 +172,11 @@ local function handleChatMessage(msg)
         end
     end
 
-    -- Handle Community server format
     local playerName, chatText
     local parts = {content, name, message, param3, param4}
     
     for _, part in ipairs(parts) do
         if part and part ~= "" then
-            -- Try to split on "Name: Message" format
             local n, m = part:match("(.+): (.+)")
             if n and m then
                 playerName = n:gsub("%*DEAD%*", ""):gsub("%*TEAM%*", ""):gsub("^%s*(.-)%s*$", "%1")
@@ -174,14 +186,13 @@ local function handleChatMessage(msg)
         end
     end
 
-    -- If we found both name and message, use them
     if playerName and chatText then
         addChatMessage(chatText, playerName, entityIndex, false)
     end
 end
 
 local function handleVoiceMessage(msg)
-    if msg:GetID() ~= 25 then return end -- VoiceSubtitle only
+    if msg:GetID() ~= 25 then return end
 
     local bf = msg:GetBitBuffer()
     if not bf then return end
@@ -238,27 +249,40 @@ local function drawChatbox()
     end
 end
 
-local function drawChatBubble(entry, screenPos, yOffset, alpha)
-    -- Prepare text
-    local displayText = entry.isVoice and ("(Voice) " .. entry.message) or entry.message
-    local wrappedLines = wrapText(displayText, BUBBLE_MAX_WIDTH - (BUBBLE_PADDING * 2))
-
-    -- Calculate bubble dimensions
+local function measureBubbleDimensions(wrappedLines)
     local bubbleWidth, bubbleHeight = 0, 0
+    
+    draw.SetFont(font)
+    draw.Color(255, 255, 255, 255)
+    
     for _, line in ipairs(wrappedLines) do
         local lineWidth, lineHeight = draw.GetTextSize(line)
         bubbleWidth = math.max(bubbleWidth, lineWidth)
         bubbleHeight = bubbleHeight + lineHeight
     end
-
+    
     bubbleWidth = math.min(bubbleWidth + (BUBBLE_PADDING * 2), BUBBLE_MAX_WIDTH)
     bubbleHeight = bubbleHeight + (BUBBLE_PADDING * 2) + (#wrappedLines - 1) * 2
+    
+    return bubbleWidth, bubbleHeight
+end
 
-    -- Calculate target bubble position
+local function drawChatBubble(entry, screenPos, yOffset, opacity)
+    draw.SetFont(font)
+
+    local displayText = entry.isVoice and ("(Voice) " .. entry.message) or entry.message
+    local wrappedLines = wrapText(displayText, BUBBLE_MAX_WIDTH - (BUBBLE_PADDING * 2))
+    
+    local bubbleWidth, bubbleHeight = measureBubbleDimensions(wrappedLines)
+    
+    -- Skip drawing entirely if opacity is 2
+    if opacity <= 2 then
+        return bubbleHeight + 5  -- Now bubbleHeight is defined
+    end
+    
     local bubbleX = math.max(bubbleWidth/2, math.min(screenW - bubbleWidth/2, screenPos[1]))
     local bubbleY = math.max(bubbleHeight, math.min(screenH - 20, screenPos[2] - bubbleHeight - 20 - yOffset))
 
-    -- Smooth position
     if not entry.smoothPos then
         entry.smoothPos = {x = bubbleX, y = bubbleY}
     else
@@ -266,29 +290,29 @@ local function drawChatBubble(entry, screenPos, yOffset, alpha)
         entry.smoothPos.y = entry.smoothPos.y + (bubbleY - entry.smoothPos.y) * SMOOTHING_FACTOR
     end
 
-    -- Draw background
-    local bgAlpha = math.floor(BACKGROUND_ALPHA * alpha)
-    if SETTINGS.SHOW_BACKGROUND then
-        draw.Color(0, 0, 0, bgAlpha)
-        draw.FilledRect(
-            math.floor(entry.smoothPos.x - bubbleWidth/2),
-            math.floor(entry.smoothPos.y - bubbleHeight),
-            math.floor(entry.smoothPos.x + bubbleWidth/2),
-            math.floor(entry.smoothPos.y)
-        )
-    end
+    -- Draw background - explicitly set color before drawing
+    draw.Color(0, 0, 0, opacity)
+    draw.FilledRect(
+        math.floor(entry.smoothPos.x - bubbleWidth/2),
+        math.floor(entry.smoothPos.y - bubbleHeight),
+        math.floor(entry.smoothPos.x + bubbleWidth/2),
+        math.floor(entry.smoothPos.y)
+    )
 
-    -- Draw text
-    draw.Color(255, 255, 255, math.floor(alpha))
+    -- Draw text - reset font and color for each line
     local yTextOffset = 0
     for _, line in ipairs(wrappedLines) do
-        local _, lineHeight = draw.GetTextSize(line)
+        -- Set states before each text draw
+        draw.SetFont(font)
+        draw.Color(255, 255, 255, opacity)
+        
+        local width, height = draw.GetTextSize(line)
         draw.TextShadow(
             math.floor(entry.smoothPos.x - bubbleWidth/2 + BUBBLE_PADDING),
             math.floor(entry.smoothPos.y - bubbleHeight + BUBBLE_PADDING + yTextOffset),
             line
         )
-        yTextOffset = yTextOffset + lineHeight + 2
+        yTextOffset = yTextOffset + height + 2
     end
 
     return bubbleHeight + 5
@@ -304,7 +328,6 @@ local function drawChatBubbles()
     for _, player in ipairs(players) do
         if not player:IsValid() or player == localPlayer then goto continue end
 
-        -- Get player head position
         local origin = player:GetAbsOrigin()
         if not origin then goto continue end
         
@@ -321,12 +344,8 @@ local function drawChatBubbles()
             local messageAge = currentTime - entry.time
             if messageAge > MESSAGE_LIFETIME then goto nextMessage end
 
-            -- Calculate alpha for fade effect
-            if messageAge > FADE_START_TIME then
-                alpha = math.max(0, 255 * (1 - (messageAge - FADE_START_TIME) / (MESSAGE_LIFETIME - FADE_START_TIME)))
-            end
-
-            yOffset = yOffset + drawChatBubble(entry, screenPos, yOffset, alpha)
+            local opacity = calculateOpacity(messageAge)
+            yOffset = yOffset + drawChatBubble(entry, screenPos, yOffset, opacity)
             
             ::nextMessage::
         end
@@ -335,17 +354,15 @@ local function drawChatBubbles()
     end
 end
 
--- Callback handlers
 local function onDraw()
     updateScreenSize()
     --drawChatbox()
     drawChatBubbles()
 end
 
--- Clean up
 local function cleanup()
     callbacks.Unregister("DispatchUserMessage", "ChatDisplayMessage")
-    callbacks.Unregister("DispatchUserMessage", "ChatDisplayVoice")
+    callbacks.Unregister("DispatchUserMessage", "ChatDisplayVoice") 
     callbacks.Unregister("Draw", "ChatDisplayDraw")
     chatLog = nil
     globalChatLog = nil
@@ -353,8 +370,7 @@ local function cleanup()
     font = nil
 end
 
--- Register callbacks
 callbacks.Register("DispatchUserMessage", "ChatDisplayMessage", handleChatMessage)
 callbacks.Register("DispatchUserMessage", "ChatDisplayVoice", handleVoiceMessage)
 callbacks.Register("Draw", "ChatDisplayDraw", onDraw)
-callbacks.Register("Unload", "ChatDisplayCleanup", cleanup)
+callbacks.Register("Unload", "ChatDisplayCleanup", cleanup) 
