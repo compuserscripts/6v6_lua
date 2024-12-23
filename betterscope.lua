@@ -75,10 +75,21 @@ end
 
 -- Draw scope overlay and hitboxes
 callbacks.Register("Draw", function()
+    -- Initialize local player first
+    local localPlayer = entities.GetLocalPlayer()
+    if not localPlayer then return end
+    
+    -- Early exit conditions
     if not ScopeRenderer:IsScoped() or 
        engine.Con_IsVisible() or 
        engine.IsGameUIVisible() or 
        input.IsButtonDown(KEY_ESCAPE) then return end
+       
+    -- Ensure we have proper screen dimensions
+    ScopeRenderer.screen.width, ScopeRenderer.screen.height = draw.GetScreenSize()
+    
+    -- Set default color state
+    draw.Color(255, 255, 255, 255)
 
     -- Set color for scope lines
     draw.Color(255, 255, 255, 255) -- White color for better visibility
