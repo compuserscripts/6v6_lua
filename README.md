@@ -49,8 +49,6 @@ materials.Enumerate(get_materials)
 world textures don't get hidden, i guess vertexlitgeneric somethign fucks up
 it also lags because of the movechild thing
 
-sentry chams visible only or not if in given radius
-
 sniper chams when visible
 
 focusfire/antiair box corners scale with distance
@@ -61,13 +59,8 @@ proper unload and register for all scripts
 
 when drawing chams in focusfire/antiair use getmovechild and peer to color the entire model/weapon so all attachments
 
-sniper rendertarget scope, so we can zoom further without using real fov because thats detectable. draw black lines so we can aim too.  make scrollable
-
 make players we aim at fullbright
 
-
-C:\Users\User\AppData\Local\stickycam.lua :130: bad argument #1 to 'add' (Using an operator on a nil value. Maybe you used wrong variable name?)
-C:\Users\User\AppData\Local\stickycam.lua :130: bad argument #1 to 'add' (Using an operator on a nil value. Maybe you used wrong variable name?)
 
 show taunter through walls chams
 
@@ -91,3 +84,5 @@ stickycam boolean followLatest - follow latest sticky
 boolean autoSwitchClosest - automatically switch to closest sticky
 
 spectaet script - only apply invisible chams if in first person
+
+fix jumptrajectory aimpos calc from original
