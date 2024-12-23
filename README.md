@@ -85,12 +85,6 @@ boolean autoSwitchClosest - automatically switch to closest sticky
 
 spectaet script - only apply invisible chams if in first person
 
-fix jumptrajectory aimpos calc from original
+fix fading alpha < 2 for betterscope warning text same as chatbubbles
 
-ad argument #1 to 'index' (Unknown method)
-C:\Users\User\AppData\Local\stickycam.lua :67: bad argument #1 to 'index' (Unknown method)
-C:\Users\User\AppData\Local\stickycam.lua :67: bad argument #1 to 'index' (Unknown method)
-C:\Users\User\AppData\Local\stickycam.lua :67: bad argument #1 to 'index' (Unknown method)
-C:\Users\User\AppData\Local\stickycam.lua :67: bad argument #1 to 'index' (Unknown method)
-C:\Users\User\AppData\Local\stickycam.lua :67: bad argument #1 to 'index' (Unknown method)
-C:\Users\User\AppData\Local\stickycam.lua :67: b
+sticky radius script
