@@ -1,6 +1,6 @@
 -- Global variables for materials
-local fullscreen_texture = nil
-local fullscreen_material = nil
+local scope_tex = nil
+local scope_material = nil
 local materials_initialized = false
 local base_fov = client.GetConVar("fov_desired") or 90
 local fov_offset = 0 -- Start at no offset
@@ -8,6 +8,11 @@ local newZoomStyle = true -- Flag to toggle between zoom styles
 local zoom_step = 2 -- Default step for scrollwheel style
 local zoom_step_new = 1.75 -- Default step for movement keys style
 local storedCustomView = nil -- Store the custom view for hitboxes
+
+-- New zoom lock variables
+local zoom_locked = false
+local warning_alpha = 0
+local warning_fade_start = 0
 
 -- Colors for hitbox ESP
 local TEAM_COLORS = {
@@ -18,14 +23,21 @@ local TEAM_COLORS = {
 -- Get screen dimensions
 local screen_width, screen_height = draw.GetScreenSize()
 
+-- Cleanup function for materials and textures
+local function CleanupMaterials()
+    scope_tex = nil
+    scope_material = nil
+    materials_initialized = false
+end
+
 -- Initialize materials function
 local function InitializeMaterials()
     if materials_initialized then return true end
     
     -- Create fullscreen texture and material
-    local texture_name = "fullscreen_texture"
-    fullscreen_texture = materials.CreateTextureRenderTarget(texture_name, screen_width, screen_height)
-    if not fullscreen_texture then return false end
+    local texture_name = "scope_tex"
+    scope_tex = materials.CreateTextureRenderTarget(texture_name, screen_width, screen_height)
+    if not scope_tex then return false end
 
     local material_kv = string.format([[
         UnlitGeneric
@@ -36,8 +48,8 @@ local function InitializeMaterials()
         }
     ]], texture_name)
     
-    fullscreen_material = materials.Create("fullscreen_material", material_kv)
-    if not fullscreen_material then return false end
+    scope_material = materials.Create("scope_material", material_kv)
+    if not scope_material then return false end
     
     materials_initialized = true
     return true
@@ -59,15 +71,33 @@ end
 
 -- Draw scope lines and hitboxes
 callbacks.Register("Draw", function()
-    if not IsScoped() or engine.Con_IsVisible() or engine.IsGameUIVisible() then 
+    -- Don't draw if menus are open or not scoped
+    if not IsScoped() or engine.Con_IsVisible() or engine.IsGameUIVisible() or input.IsButtonDown(KEY_ESCAPE) then 
+        CleanupMaterials() -- Clean up materials when closing
         return
     end
-    
+
     -- Draw single pixel scope lines
     draw.Color(255, 255, 255, 255)
     draw.FilledRect(0, screen_height/2, screen_width, screen_height/2 + 1)
     draw.FilledRect(screen_width/2, 0, screen_width/2 + 1, screen_height)
 
+    -- Draw warning message if needed
+    if warning_alpha > 0 then
+        local current_time = globals.RealTime()
+        local time_since_warning = current_time - warning_fade_start
+        if time_since_warning < 1.0 then
+            warning_alpha = math.floor(math.max(0, 255 * (1.0 - time_since_warning)))
+            draw.Color(255, 0, 0, warning_alpha)
+            draw.SetFont(draw.CreateFont("Arial", 20, 800))
+            local warning_text = "Zoom Locked!"
+            local text_w, text_h = draw.GetTextSize(warning_text)
+            draw.Text(screen_width - text_w - 20, screen_height - text_h - 20, warning_text)
+        else
+            warning_alpha = 0
+        end
+    end
+    
     -- Draw hitboxes
     local players = entities.FindByClass("CTFPlayer")
     local localPlayer = entities.GetLocalPlayer()
@@ -147,14 +177,30 @@ end)
 callbacks.Register("CreateMove", function(cmd)
     if IsScoped() then
         if newZoomStyle then
-            -- Zoom in when forward (W) and right (D) are held
-            if (cmd.buttons & IN_FORWARD) ~= 0 and (cmd.buttons & IN_MOVERIGHT) ~= 0 then
-                fov_offset = math.max(fov_offset - zoom_step_new, -80)  -- Most zoomed in (90-80 = 10 FOV)
+            if input.IsButtonPressed(113) then -- MWHEEL_DOWN
+                zoom_locked = true
+                warning_alpha = 255
+                warning_fade_start = globals.RealTime()
+            elseif input.IsButtonPressed(112) then -- MWHEEL_UP
+                zoom_locked = false
             end
-            
-            -- Zoom out when backward (S) and left (A) are held
-            if (cmd.buttons & IN_BACK) ~= 0 and (cmd.buttons & IN_MOVELEFT) ~= 0 then
-                fov_offset = math.min(fov_offset + zoom_step_new, 30)  -- Most zoomed out (90+30 = 120 FOV)
+
+            -- Only allow zoom adjustments if not locked
+            if not zoom_locked then
+                -- Zoom in when forward (W) and right (D) are held
+                if (cmd.buttons & IN_FORWARD) ~= 0 and (cmd.buttons & IN_MOVERIGHT) ~= 0 then
+                    fov_offset = math.max(fov_offset - zoom_step_new, -80)
+                end
+                
+                -- Zoom out when backward (S) and left (A) are held
+                if (cmd.buttons & IN_BACK) ~= 0 and (cmd.buttons & IN_MOVELEFT) ~= 0 then
+                    fov_offset = math.min(fov_offset + zoom_step_new, 30)
+                end
+            elseif ((cmd.buttons & IN_FORWARD) ~= 0 and (cmd.buttons & IN_MOVERIGHT) ~= 0) or 
+                   ((cmd.buttons & IN_BACK) ~= 0 and (cmd.buttons & IN_MOVELEFT) ~= 0) then
+                -- Show warning if trying to adjust while locked
+                warning_alpha = 255
+                warning_fade_start = globals.RealTime()
             end
         else
             -- Original scrollwheel style
@@ -171,7 +217,8 @@ end)
 
 -- Main render callback
 callbacks.Register("PostRenderView", function(view)
-    if engine.Con_IsVisible() or engine.IsGameUIVisible() then 
+    if engine.Con_IsVisible() or engine.IsGameUIVisible() or input.IsButtonDown(KEY_ESCAPE) then 
+        CleanupMaterials()
         return
     end
     
@@ -179,9 +226,12 @@ callbacks.Register("PostRenderView", function(view)
         return
     end
     
-    if not IsScoped() then return end
+    if not IsScoped() then 
+        CleanupMaterials()
+        return 
+    end
     
-    if not fullscreen_texture or not fullscreen_material then 
+    if not scope_tex or not scope_material then 
         return
     end
     
@@ -192,13 +242,13 @@ callbacks.Register("PostRenderView", function(view)
     storedCustomView = customView -- Store for hitbox drawing
     
     -- Render the scene to our texture
-    render.Push3DView(customView, E_ClearFlags.VIEW_CLEAR_COLOR | E_ClearFlags.VIEW_CLEAR_DEPTH, fullscreen_texture)
+    render.Push3DView(customView, E_ClearFlags.VIEW_CLEAR_COLOR | E_ClearFlags.VIEW_CLEAR_DEPTH, scope_tex)
     render.ViewDrawScene(true, true, customView)
     render.PopView()
     
     -- Draw the texture to the screen
     render.DrawScreenSpaceRectangle(
-        fullscreen_material,
+        scope_material,
         0, 0,
         screen_width, screen_height,
         0, 0,
@@ -209,9 +259,7 @@ end)
 
 -- Cleanup on script unload
 callbacks.Register("Unload", function()
-    fullscreen_texture = nil
-    fullscreen_material = nil
-    materials_initialized = false
+    CleanupMaterials()
     storedCustomView = nil
 end)
 
