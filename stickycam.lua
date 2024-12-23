@@ -57,7 +57,7 @@ local function InitializeMaterials()
     
     -- Clean up any existing materials first
     if stickyCameraTexture then
-        draw.DeleteTexture(stickyCameraTexture)
+        materials.DestroyTextureRenderTarget(stickyCameraTexture) -- Changed from draw.DeleteTexture
         stickyCameraTexture = nil
     end
     
@@ -81,7 +81,7 @@ local function InitializeMaterials()
     if not stickyCameraMaterial then
         print("Failed to create camera material")
         if stickyCameraTexture then
-            draw.DeleteTexture(stickyCameraTexture)
+            materials.DestroyTextureRenderTarget(stickyCameraTexture) -- Changed this line too
             stickyCameraTexture = nil
         end
         return false
@@ -686,7 +686,7 @@ callbacks.Register("Unload", function()
     target_visible = false
     
     if stickyCameraTexture then
-        draw.DeleteTexture(stickyCameraTexture)
+        materials.DestroyTextureRenderTarget(stickyCameraTexture) -- Changed here too
         stickyCameraTexture = nil
     end
     
