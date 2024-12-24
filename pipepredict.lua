@@ -19,12 +19,12 @@ local config = {
     -- Weapon-specific settings  
     weapons = {
         [TF_WEAPON_GRENADELAUNCHER] = {
-            speed = 1200,
+            speed = 1200.4,         -- Updated speed
             gravity = 800,
             radius = 146
         },
         [TF_WEAPON_PIPEBOMBLAUNCHER] = {
-            speed = 900, 
+            speed = 925.38,         -- Updated speed
             gravity = 800,
             radius = 146
         }
