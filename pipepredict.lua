@@ -70,13 +70,8 @@ local function PredictTrajectory(startPos, angles, weaponConfig, isEnemy)
     local position = Vector3(startPos.x, startPos.y, startPos.z + 10) -- Add small vertical offset
     local velocity = forward * weaponConfig.speed
     local timeStep = globals.TickInterval()
-    local gravity = Vector3(0, 0, -weaponConfig.gravity)
-
-    -- Debug first prediction
-    if isEnemy and globals.TickCount() % 66 == 0 then
-        print(string.format("Initial velocity: (%.1f, %.1f, %.1f)", velocity.x, velocity.y, velocity.z))
-        print(string.format("Initial position: (%.1f, %.1f, %.1f)", position.x, position.y, position.z))
-    end
+    local sv_gravity = client.GetConVar("sv_gravity") or 800
+    local gravity = Vector3(0, 0, -sv_gravity)
 
     -- Add initial point
     table.insert(points, position)
@@ -92,23 +87,10 @@ local function PredictTrajectory(startPos, angles, weaponConfig, isEnemy)
         
         -- Check for collision
         local trace = engine.TraceLine(prevPos, position, MASK_SHOT)
-        
-        -- Debug trace info for enemies
-        if isEnemy and i == 1 and globals.TickCount() % 66 == 0 then
-            print(string.format("First trace - fraction: %.2f, hit: %s", 
-                trace.fraction,
-                trace.entity and trace.entity:GetClass() or "none"))
-        end
 
         if trace.fraction < 1.0 then
             position = trace.endpos
             table.insert(points, position)
-            
-            -- Debug collision for enemies
-            if isEnemy and globals.TickCount() % 66 == 0 then
-                print(string.format("Collision at point %d: (%.1f, %.1f, %.1f)", 
-                    #points, position.x, position.y, position.z))
-            end
             break
         end
         
@@ -208,13 +190,6 @@ local function ProcessPlayerTrajectory(player, isEnemy)
     -- Draw radius at final point if we have points
     if #points > 0 then
         DrawRadius(points[#points], weaponConfig.radius, colors.radius)
-    end
-    
-    -- Debug print for enemy trajectories
-    if isEnemy and globals.TickCount() % 66 == 0 then
-        print(string.format("Enemy trajectory - Start: (%.1f, %.1f, %.1f) Angles: (%.1f, %.1f)", 
-            startPos.x, startPos.y, startPos.z, angles.x, angles.y))
-        print(string.format("Points generated: %d", #points))
     end
 end
 
