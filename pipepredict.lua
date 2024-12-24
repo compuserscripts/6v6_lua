@@ -1,11 +1,7 @@
 -- Configuration
 local config = {
-    -- Style settings
+    -- Style settings (only enemy colors needed now)
     colors = {
-        friendly = {
-            path = {255, 255, 255, 255},
-            radius = {255, 0, 0, 100}
-        },
         enemy = {
             path = {255, 0, 0, 255},
             radius = {255, 0, 0, 100}
@@ -16,17 +12,23 @@ local config = {
     predictionSteps = 66,
     pathThickness = 2,
     
+    -- Physics settings
+    elasticity = 0.45,        -- How bouncy projectiles are
+    friction = 0.2,           -- Surface friction when sliding
+    
     -- Weapon-specific settings  
     weapons = {
         [TF_WEAPON_GRENADELAUNCHER] = {
-            speed = 1200.4,         -- Updated speed
+            speed = 1200.4,
             gravity = 800,
-            radius = 146
+            radius = 146,
+            bounce = true      -- Pipes can bounce
         },
         [TF_WEAPON_PIPEBOMBLAUNCHER] = {
-            speed = 925.38,         -- Updated speed
+            speed = 925.38,
             gravity = 800,
-            radius = 146
+            radius = 146,
+            bounce = false     -- Stickies don't bounce
         }
     }
 }
@@ -53,7 +55,7 @@ local function GetPlayerAimInfo(player)
 end
 
 -- Simulate grenade trajectory
-local function PredictTrajectory(startPos, angles, weaponConfig, isEnemy)
+local function PredictTrajectory(startPos, angles, weaponConfig)
     local points = {}
     
     -- Calculate initial velocity from angles
@@ -67,7 +69,7 @@ local function PredictTrajectory(startPos, angles, weaponConfig, isEnemy)
     )
     
     -- Initialize physics
-    local position = Vector3(startPos.x, startPos.y, startPos.z + 10) -- Add small vertical offset
+    local position = Vector3(startPos.x, startPos.y, startPos.z + 10)
     local velocity = forward * weaponConfig.speed
     local timeStep = globals.TickInterval()
     local sv_gravity = client.GetConVar("sv_gravity") or 800
@@ -78,7 +80,6 @@ local function PredictTrajectory(startPos, angles, weaponConfig, isEnemy)
     
     -- Prediction loop
     for i = 1, config.predictionSteps do
-        -- Store previous position
         local prevPos = Vector3(position.x, position.y, position.z)
         
         -- Update physics
@@ -91,7 +92,19 @@ local function PredictTrajectory(startPos, angles, weaponConfig, isEnemy)
         if trace.fraction < 1.0 then
             position = trace.endpos
             table.insert(points, position)
-            break
+            
+            if weaponConfig.bounce then
+                -- Reflect velocity off surface
+                local normal = trace.plane
+                velocity = velocity - (normal * (2 * velocity:Dot(normal)))
+                
+                -- Apply elasticity and friction
+                velocity = velocity * config.elasticity
+                velocity.x = velocity.x * (1 - config.friction)
+                velocity.y = velocity.y * (1 - config.friction)
+            else
+                break  -- Stop on collision for non-bouncing projectiles
+            end
         end
         
         table.insert(points, Vector3(position.x, position.y, position.z))
@@ -166,8 +179,8 @@ local function DrawRadius(point, radius, color)
     end
 end
 
--- Process single player's trajectory
-local function ProcessPlayerTrajectory(player, isEnemy)
+-- Process enemy trajectory
+local function ProcessEnemyTrajectory(player)
     -- Get weapon and config
     local weapon = player:GetPropEntity("m_hActiveWeapon")
     if not weapon then return end
@@ -179,17 +192,14 @@ local function ProcessPlayerTrajectory(player, isEnemy)
     -- Get firing position and angles
     local startPos, angles = GetPlayerAimInfo(player)
     
-    -- Get appropriate colors
-    local colors = isEnemy and config.colors.enemy or config.colors.friendly
-    
     -- Predict and draw trajectory
-    local points = PredictTrajectory(startPos, angles, weaponConfig, isEnemy)
+    local points = PredictTrajectory(startPos, angles, weaponConfig)
     
-    DrawLines(points, colors.path)
+    DrawLines(points, config.colors.enemy.path)
     
     -- Draw radius at final point if we have points
     if #points > 0 then
-        DrawRadius(points[#points], weaponConfig.radius, colors.radius)
+        DrawRadius(points[#points], weaponConfig.radius, config.colors.enemy.radius)
     end
 end
 
@@ -200,12 +210,12 @@ local function OnDraw()
     local me = entities.GetLocalPlayer()
     if not me or not me:IsAlive() then return end
     
-    -- Process all players
+    -- Process only enemy players
     local players = entities.FindByClass("CTFPlayer")
     for _, player in pairs(players) do
-        if player:IsAlive() and not player:IsDormant() then
-            local isEnemy = player:GetTeamNumber() ~= me:GetTeamNumber()
-            ProcessPlayerTrajectory(player, isEnemy)
+        if player:IsAlive() and not player:IsDormant() 
+           and player:GetTeamNumber() ~= me:GetTeamNumber() then
+            ProcessEnemyTrajectory(player)
         end
     end
 end
