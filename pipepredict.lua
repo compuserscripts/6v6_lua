@@ -1,7 +1,11 @@
 -- Configuration
 local config = {
-    -- Style settings (only enemy colors needed now)
+    -- Style settings
     colors = {
+        friendly = {
+            path = {255, 255, 255, 255},
+            radius = {255, 0, 0, 100}
+        },
         enemy = {
             path = {255, 0, 0, 255},
             radius = {255, 0, 0, 100}
@@ -22,13 +26,13 @@ local config = {
             speed = 1200.4,
             gravity = 800,
             radius = 146,
-            bounce = true      -- Pipes can bounce
+            bounce = true
         },
         [TF_WEAPON_PIPEBOMBLAUNCHER] = {
-            speed = 925.38,
+            speed = 900,      -- Base sticky speed (will be modified by charge)
             gravity = 800,
             radius = 146,
-            bounce = false     -- Stickies don't bounce
+            bounce = false
         }
     }
 }
@@ -55,7 +59,7 @@ local function GetPlayerAimInfo(player)
 end
 
 -- Simulate grenade trajectory
-local function PredictTrajectory(startPos, angles, weaponConfig)
+local function PredictTrajectory(startPos, angles, weaponConfig, player, weaponID, isEnemy)
     local points = {}
     
     -- Calculate initial velocity from angles
@@ -70,16 +74,46 @@ local function PredictTrajectory(startPos, angles, weaponConfig)
     
     -- Initialize physics
     local position = Vector3(startPos.x, startPos.y, startPos.z + 10)
-    local velocity = forward * weaponConfig.speed
+    
+    -- Get sticky charge time and adjust speed
+    local speed = weaponConfig.speed
+    if weaponID == TF_WEAPON_PIPEBOMBLAUNCHER then
+        local weapon = player:GetPropEntity("m_hActiveWeapon")
+        if weapon then
+            local chargeBeginTime = weapon:GetPropFloat("m_flChargeBeginTime") or 0
+            if isEnemy and globals.TickCount() % 66 == 0 then
+                print("Charge Begin Time: " .. chargeBeginTime)
+            end
+            
+            if chargeBeginTime ~= 0 then
+                local chargeTime = globals.CurTime() - chargeBeginTime
+                -- Base speed (900) + charge bonus (up to 1500 over 4 seconds)
+                speed = 900 + math.min(math.max(chargeTime / 4, 0), 1) * 1500
+                
+                if isEnemy and globals.TickCount() % 66 == 0 then
+                    print(string.format("Charge time: %.2f, Speed: %.1f", chargeTime, speed))
+                end
+            end
+        end
+    end
+    
+    local velocity = forward * speed
     local timeStep = globals.TickInterval()
     local sv_gravity = client.GetConVar("sv_gravity") or 800
     local gravity = Vector3(0, 0, -sv_gravity)
+
+    -- Debug first prediction
+    if isEnemy and globals.TickCount() % 66 == 0 then
+        print(string.format("Initial velocity: (%.1f, %.1f, %.1f)", velocity.x, velocity.y, velocity.z))
+        print(string.format("Initial position: (%.1f, %.1f, %.1f)", position.x, position.y, position.z))
+    end
 
     -- Add initial point
     table.insert(points, position)
     
     -- Prediction loop
     for i = 1, config.predictionSteps do
+        -- Store previous position
         local prevPos = Vector3(position.x, position.y, position.z)
         
         -- Update physics
@@ -88,6 +122,13 @@ local function PredictTrajectory(startPos, angles, weaponConfig)
         
         -- Check for collision
         local trace = engine.TraceLine(prevPos, position, MASK_SHOT)
+        
+        -- Debug trace info for enemies
+        if isEnemy and i == 1 and globals.TickCount() % 66 == 0 then
+            print(string.format("First trace - fraction: %.2f, hit: %s", 
+                trace.fraction,
+                trace.entity and trace.entity:GetClass() or "none"))
+        end
 
         if trace.fraction < 1.0 then
             position = trace.endpos
@@ -104,6 +145,12 @@ local function PredictTrajectory(startPos, angles, weaponConfig)
                 velocity.y = velocity.y * (1 - config.friction)
             else
                 break  -- Stop on collision for non-bouncing projectiles
+            end
+            
+            -- Debug collision for enemies
+            if isEnemy and globals.TickCount() % 66 == 0 then
+                print(string.format("Collision at point %d: (%.1f, %.1f, %.1f)", 
+                    #points, position.x, position.y, position.z))
             end
         end
         
@@ -179,8 +226,8 @@ local function DrawRadius(point, radius, color)
     end
 end
 
--- Process enemy trajectory
-local function ProcessEnemyTrajectory(player)
+-- Process single player's trajectory
+local function ProcessPlayerTrajectory(player, isEnemy)
     -- Get weapon and config
     local weapon = player:GetPropEntity("m_hActiveWeapon")
     if not weapon then return end
@@ -192,14 +239,24 @@ local function ProcessEnemyTrajectory(player)
     -- Get firing position and angles
     local startPos, angles = GetPlayerAimInfo(player)
     
-    -- Predict and draw trajectory
-    local points = PredictTrajectory(startPos, angles, weaponConfig)
+    -- Get appropriate colors
+    local colors = isEnemy and config.colors.enemy or config.colors.friendly
     
-    DrawLines(points, config.colors.enemy.path)
+    -- Predict and draw trajectory
+    local points = PredictTrajectory(startPos, angles, weaponConfig, player, weaponID, isEnemy)
+    
+    DrawLines(points, colors.path)
     
     -- Draw radius at final point if we have points
     if #points > 0 then
-        DrawRadius(points[#points], weaponConfig.radius, config.colors.enemy.radius)
+        DrawRadius(points[#points], weaponConfig.radius, colors.radius)
+    end
+    
+    -- Debug print for enemy trajectories
+    if isEnemy and globals.TickCount() % 66 == 0 then
+        print(string.format("Enemy trajectory - Start: (%.1f, %.1f, %.1f) Angles: (%.1f, %.1f)", 
+            startPos.x, startPos.y, startPos.z, angles.x, angles.y))
+        print(string.format("Points generated: %d", #points))
     end
 end
 
@@ -210,12 +267,12 @@ local function OnDraw()
     local me = entities.GetLocalPlayer()
     if not me or not me:IsAlive() then return end
     
-    -- Process only enemy players
+    -- Process all players
     local players = entities.FindByClass("CTFPlayer")
     for _, player in pairs(players) do
-        if player:IsAlive() and not player:IsDormant() 
-           and player:GetTeamNumber() ~= me:GetTeamNumber() then
-            ProcessEnemyTrajectory(player)
+        if player:IsAlive() and not player:IsDormant() then
+            local isEnemy = player:GetTeamNumber() ~= me:GetTeamNumber()
+            ProcessPlayerTrajectory(player, isEnemy)
         end
     end
 end
