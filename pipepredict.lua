@@ -29,7 +29,7 @@ local config = {
             bounce = false
         },
         [TF_WEAPON_PIPEBOMBLAUNCHER] = {
-            speed = 925.38,      -- Base sticky speed (will be modified by charge)
+            speed = 1325.38,      -- Base sticky speed (will be modified by charge)
             gravity = 800,
             radius = 146,
             bounce = false
