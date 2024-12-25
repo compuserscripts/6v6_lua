@@ -23,10 +23,10 @@ local config = {
     -- Weapon-specific settings  
     weapons = {
         [TF_WEAPON_GRENADELAUNCHER] = {
-            speed = 1200.4,
+            speed = 1550.4,
             gravity = 800,
             radius = 146,
-            bounce = true
+            bounce = false
         },
         [TF_WEAPON_PIPEBOMBLAUNCHER] = {
             speed = 925.38,      -- Base sticky speed (will be modified by charge)
