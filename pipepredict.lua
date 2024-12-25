@@ -37,6 +37,65 @@ local config = {
     }
 }
 
+-- Calculate sticky charge for any player
+local function GetStickyChargeSpeed(player, weapon, isEnemy)
+    local baseSpeed = 900
+    local maxChargeSpeed = 2400 -- Maximum speed with full charge
+    
+    if not weapon then return baseSpeed end
+
+    -- Try multiple netvar paths to get charge data
+    local chargeBeginTime
+    if isEnemy then
+        -- Try different netvar paths for enemy charge
+        local paths = {
+            weapon:GetPropFloat("m_Shared", "m_flChargeBeginTime"),
+            weapon:GetPropFloat("LocalTFWeaponMedigunData", "m_flChargeLevel"),
+            weapon:GetPropFloat("m_flChargeBeginTime")
+        }
+        
+        -- Use first non-nil value
+        for _, time in ipairs(paths) do
+            if time and time ~= 0 then
+                chargeBeginTime = time
+                break
+            end
+        end
+        
+        -- If we still don't have charge time, check if weapon is firing
+        if not chargeBeginTime or chargeBeginTime == 0 then
+            local isShooting = weapon:GetPropBool("m_bAttacking") or false
+            if isShooting then
+                -- If shooting, estimate charge based on client time
+                chargeBeginTime = globals.CurTime() - 0.1
+            end
+        end
+    else
+        -- Local player charge time
+        chargeBeginTime = weapon:GetPropFloat("PipebombLauncherLocalData", "m_flChargeBeginTime")
+    end
+
+    if not chargeBeginTime or chargeBeginTime == 0 then 
+        return baseSpeed
+    end
+    
+    -- Calculate charge time and clamp between 0-4 seconds
+    local chargeTime = math.max(0, math.min(4, globals.CurTime() - chargeBeginTime))
+    
+    -- Calculate speed based on charge time
+    local chargeSpeed = baseSpeed + (maxChargeSpeed - baseSpeed) * (chargeTime / 4)
+    
+    -- More detailed debug output for enemy charges
+    if isEnemy and globals.TickCount() % 66 == 0 then
+        print(string.format("Enemy charge data - BeginTime: %.2f, ChargeTime: %.2f, Speed: %.1f", 
+            chargeBeginTime, chargeTime, chargeSpeed))
+        print(string.format("Current time: %.2f, Delta: %.2f", 
+            globals.CurTime(), globals.CurTime() - chargeBeginTime))
+    end
+    
+    return chargeSpeed
+end
+
 -- Get player eye position and angles
 local function GetPlayerAimInfo(player)
     local origin = player:GetAbsOrigin()
@@ -50,9 +109,17 @@ local function GetPlayerAimInfo(player)
     
     startPos = origin + viewOffset
     
-    -- Get angles
+    -- Get angles and adjust for view direction
     local pitch = player:GetPropFloat("tfnonlocaldata", "m_angEyeAngles[0]") or 0
     local yaw = player:GetPropFloat("tfnonlocaldata", "m_angEyeAngles[1]") or 0
+    
+    -- Normalize yaw angle to -180 to 180 range
+    while yaw > 180 do yaw = yaw - 360 end
+    while yaw < -180 do yaw = yaw + 360 end
+    
+    -- Clamp pitch to avoid extreme angles
+    pitch = math.max(-89, math.min(89, pitch))
+    
     angles = EulerAngles(pitch, yaw, 0)
     
     return startPos, angles
@@ -75,29 +142,22 @@ local function PredictTrajectory(startPos, angles, weaponConfig, player, weaponI
     -- Initialize physics
     local position = Vector3(startPos.x, startPos.y, startPos.z + 10)
     
-    -- Get sticky charge time and adjust speed
+    -- Get speed based on weapon type and charge
     local speed = weaponConfig.speed
     if weaponID == TF_WEAPON_PIPEBOMBLAUNCHER then
         local weapon = player:GetPropEntity("m_hActiveWeapon")
-        if weapon then
-            local chargeBeginTime = weapon:GetPropFloat("m_flChargeBeginTime") or 0
-            if isEnemy and globals.TickCount() % 66 == 0 then
-                print("Charge Begin Time: " .. chargeBeginTime)
-            end
-            
-            if chargeBeginTime ~= 0 then
-                local chargeTime = globals.CurTime() - chargeBeginTime
-                -- Base speed (900) + charge bonus (up to 1500 over 4 seconds)
-                speed = 900 + math.min(math.max(chargeTime / 4, 0), 1) * 1500
-                
-                if isEnemy and globals.TickCount() % 66 == 0 then
-                    print(string.format("Charge time: %.2f, Speed: %.1f", chargeTime, speed))
-                end
-            end
-        end
+        speed = GetStickyChargeSpeed(player, weapon, isEnemy)
     end
     
+    -- Normalize the forward vector manually
+    local length = math.sqrt(forward.x * forward.x + forward.y * forward.y + forward.z * forward.z)
+    if length > 0 then
+        forward.x = forward.x / length
+        forward.y = forward.y / length
+        forward.z = forward.z / length
+    end
     local velocity = forward * speed
+    
     local timeStep = globals.TickInterval()
     local sv_gravity = client.GetConVar("sv_gravity") or 800
     local gravity = Vector3(0, 0, -sv_gravity)
