@@ -212,34 +212,6 @@ local function CleanupMaterials()
     class_icon_materials = {}
 end
 
-local function InitializeClassIcons()
-    local class_icons = {
-        [1] = "hud/leaderboard_class_scout",
-        [2] = "hud/leaderboard_class_sniper",
-        [3] = "hud/leaderboard_class_soldier",
-        [4] = "hud/leaderboard_class_demo",
-        [5] = "hud/leaderboard_class_medic",
-        [6] = "hud/leaderboard_class_heavy",
-        [7] = "hud/leaderboard_class_pyro",
-        [8] = "hud/leaderboard_class_spy",
-        [9] = "hud/leaderboard_class_engineer"
-    }
-    
-    for class_id, icon_path in pairs(class_icons) do
-        local material_name = string.format("class_icon_material_%d", class_id)
-        class_icon_materials[class_id] = materials.Create(material_name, string.format([[
-            UnlitGeneric
-            {
-                "$basetexture" "%s"
-                "$translucent" 1
-                "$ignorez" 1
-                "$nofog" 1
-            }
-        ]], icon_path))
-    end
-end
-
--- Initialize all materials
 local function InitializeAllMaterials()
     -- Clean up any existing materials first
     CleanupMaterials()
@@ -248,7 +220,8 @@ local function InitializeAllMaterials()
     local windowed_texture_name = "camTexture_windowed"
     windowed_texture = materials.CreateTextureRenderTarget(windowed_texture_name, camera_width, camera_height)
     if not windowed_texture then
-        error("Failed to create windowed texture")
+        print("Failed to create windowed texture")
+        return false
     end
 
     windowed_material = materials.Create("camMaterial_windowed", string.format([[
@@ -264,7 +237,8 @@ local function InitializeAllMaterials()
     local fullscreen_texture_name = "camTexture_fullscreen"
     fullscreen_texture = materials.CreateTextureRenderTarget(fullscreen_texture_name, fullscreen_width, fullscreen_height)
     if not fullscreen_texture then
-        error("Failed to create fullscreen texture")
+        print("Failed to create fullscreen texture")
+        return false
     end
 
     fullscreen_material = materials.Create("camMaterial_fullscreen", string.format([[
@@ -284,8 +258,39 @@ local function InitializeAllMaterials()
         }
     ]])
 
-    InitializeClassIcons()
+    -- Initialize class icons
+    local class_icons = {
+        [1] = "hud/leaderboard_class_scout",
+        [2] = "hud/leaderboard_class_sniper",
+        [3] = "hud/leaderboard_class_soldier",
+        [4] = "hud/leaderboard_class_demo",
+        [5] = "hud/leaderboard_class_medic",
+        [6] = "hud/leaderboard_class_heavy",
+        [7] = "hud/leaderboard_class_pyro",
+        [8] = "hud/leaderboard_class_spy",
+        [9] = "hud/leaderboard_class_engineer"
+    }
+    
+    for class_id, icon_path in pairs(class_icons) do
+        local material_name = string.format("class_icon_material_%d", class_id)
+        class_icon_materials[class_id] = materials.Create(material_name, string.format([[
+            UnlitGeneric
+            {
+                $basetexture "%s"
+                $translucent 1
+                $ignorez 1
+                $nofog 1
+            }
+        ]], icon_path))
+        
+        if not class_icon_materials[class_id] then
+            print(string.format("Failed to create material for class %d", class_id))
+            return false
+        end
+    end
+
     materials_initialized = true
+    return true
 end
 
 local function draw_crosshair(x, y, r, g, b, a)
@@ -938,9 +943,10 @@ callbacks.Register("PostRenderView", function(view)
         return
     end
 
-    if not materials_initialized then
-        InitializeAllMaterials()
-        return
+    if not materials_initialized or not windowed_material or not fullscreen_material then
+        if not InitializeAllMaterials() then
+            return
+        end
     end
     
     local localPlayer = entities.GetLocalPlayer()
