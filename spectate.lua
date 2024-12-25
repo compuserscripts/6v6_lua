@@ -25,6 +25,12 @@ local last_killer = nil
 local persistent_fullscreen = false
 local death_time = 0
 local current_wave_start = 0
+local has_spawned_once = false
+local is_in_game = false
+local stored_class = nil
+local spectate_locked = false
+local current_all_player_index = 1
+local friendly_player_index = 1
 
 -- Material variables
 local materials_initialized = false
@@ -192,11 +198,9 @@ end
 -- Clean up function for materials and textures
 local function CleanupMaterials()
     if windowed_texture then
-        draw.DeleteTexture(windowed_texture)
         windowed_texture = nil
     end
     if fullscreen_texture then
-        draw.DeleteTexture(fullscreen_texture)
         fullscreen_texture = nil
     end
     
@@ -335,6 +339,107 @@ local function CycleNextEnemy()
     end
 end
 
+-- Function to get all alive players
+local function GetAllPlayers()
+    local all_players = {}
+    local players = entities.FindByClass("CTFPlayer")
+    for _, player in pairs(players) do
+        if player and player:IsValid() and player:IsAlive() and not player:IsDormant() then
+            table.insert(all_players, player)
+        end
+    end
+    return all_players
+end
+
+-- Function to get friendly players
+local function GetFriendlyPlayers()
+    local friendly_players = {}
+    local local_player = entities.GetLocalPlayer()
+    if not local_player then return friendly_players end
+    
+    local players = entities.FindByClass("CTFPlayer")
+    for _, player in pairs(players) do
+        if player and player:IsValid() and player:IsAlive() and 
+           not player:IsDormant() and 
+           player:GetTeamNumber() == local_player:GetTeamNumber() then
+            table.insert(friendly_players, player)
+        end
+    end
+    
+    return friendly_players
+end
+
+-- Function to cycle through all players
+local function CycleAllPlayers(forward)
+    local all_players = GetAllPlayers()
+    if #all_players == 0 then
+        target_player = nil
+        first_person_mode = false
+        free_camera = false
+        return
+    end
+
+    if forward then
+        current_all_player_index = current_all_player_index + 1
+        if current_all_player_index > #all_players then
+            current_all_player_index = 1
+        end
+    else
+        current_all_player_index = current_all_player_index - 1
+        if current_all_player_index < 1 then
+            current_all_player_index = #all_players
+        end
+    end
+
+    target_player = all_players[current_all_player_index]
+    if target_player then
+        print("Now spectating: " .. target_player:GetName())
+    end
+end
+
+-- Function to cycle through friendly players
+local function CycleFriendlyPlayers()
+    local friendly_players = GetFriendlyPlayers()
+    if #friendly_players == 0 then
+        target_player = nil
+        first_person_mode = false
+        free_camera = false
+        return
+    end
+
+    friendly_player_index = friendly_player_index + 1
+    if friendly_player_index > #friendly_players then
+        friendly_player_index = 1
+    end
+
+    target_player = friendly_players[friendly_player_index]
+    if target_player then
+        print("Now spectating friendly: " .. target_player:GetName())
+    end
+end
+
+-- Function to store current class
+local function StoreCurrentClass()
+    local local_player = entities.GetLocalPlayer()
+    if local_player then
+        stored_class = local_player:GetPropInt("m_iClass")
+    end
+end
+
+-- Function to toggle spectate lock
+local function ToggleSpectateLock()
+    if not spectate_locked then
+        StoreCurrentClass()
+        client.Command("menuopen", true)
+        spectate_locked = true
+    else
+        if stored_class then
+            client.Command("join_class " .. stored_class, true)
+        end
+        spectate_locked = false
+    end
+end
+
 local function HandleMovement()
     local forward = Vector3(0, 0, 0)
     local right = Vector3(0, 0, 0)
@@ -406,6 +511,20 @@ local function HandleKillfeedEvent(event)
         while #killfeed_deaths > MAX_KILLFEED_ENTRIES do
             table.remove(killfeed_deaths, 1)
         end
+    elseif event:GetName() == "game_newmap" then
+        -- Reset state on map change
+        has_spawned_once = false
+        is_in_game = false
+        CleanupState()
+    elseif event:GetName() == "teamplay_round_start" then
+        is_in_game = true
+    elseif event:GetName() == "teamplay_game_over" or 
+           event:GetName() == "tf_game_over" then
+        is_in_game = false
+    elseif event:GetName() == "team_control_point_captured" then
+        -- Reset our target wave when a point is captured
+        targetWaveTime = nil
+        current_wave_start = globals.CurTime()
     end
 end
 
@@ -529,22 +648,44 @@ callbacks.Register("FireGameEvent", "point_capture_hook", OnGameEvent)
 local function DrawSpectatorHUD()
     if not fullscreen_mode then return end
     
-    local time = GetRespawnTime()
-    if time > 0 then
-        draw.SetFont(hud_font)
+    -- Draw respawn timer or infinite spectate text
+    draw.SetFont(hud_font)
+    draw.Color(255, 255, 255, 255)
+    
+    local topText
+    if spectate_locked then
+        topText = "Infinite Spectate"
+    else
+        local time = GetRespawnTime()
+        if time > 0 then
+            topText = string.format("Respawning in: %.1f", time)
+        end
+    end
+    
+    if topText then
+        local textW, textH = draw.GetTextSize(topText)
+        -- Draw semi-transparent background
+        draw.Color(0, 0, 0, 150)
+        draw.FilledRectFade(
+            math.floor(fullscreen_width/2 - textW/2 - 20),
+            35,
+            math.floor(fullscreen_width/2 + textW/2 + 20),
+            45 + textH,
+            100,
+            50,
+            true
+        )
+        -- Draw text
         draw.Color(255, 255, 255, 255)
-        local respawnText = string.format("Respawning in: %.1f", time)
-        local textW, textH = draw.GetTextSize(respawnText)
         draw.TextShadow(
             math.floor(fullscreen_width/2 - textW/2),
             40,
-            respawnText
+            topText
         )
     end
     
     if not target_player or free_camera then return end
     
-    -- Rest of your HUD drawing code...
     local health = target_player:GetHealth()
     if not health then return end
     local maxHealth = target_player:GetMaxHealth()
@@ -563,16 +704,95 @@ local function DrawSpectatorHUD()
         g = 255,
         b = 0
     }
+    
+    -- Get team colors
+    local team_colors = {
+        [2] = {r = 255, g = 64, b = 64},   -- RED
+        [3] = {r = 153, g = 204, b = 255}  -- BLU
+    }
+    local team_color = team_colors[target_player:GetTeamNumber()] or {r = 255, g = 255, b = 255}
+    
+    -- Class icon mapping
+    local class_icons = {
+        [1] = materials.Find("hud/leaderboard_class_scout"),
+        [2] = materials.Find("hud/leaderboard_class_sniper"),
+        [3] = materials.Find("hud/leaderboard_class_soldier"),
+        [4] = materials.Find("hud/leaderboard_class_demo"),
+        [5] = materials.Find("hud/leaderboard_class_medic"),
+        [6] = materials.Find("hud/leaderboard_class_heavy"),
+        [7] = materials.Find("hud/leaderboard_class_pyro"),
+        [8] = materials.Find("hud/leaderboard_class_spy"),
+        [9] = materials.Find("hud/leaderboard_class_engineer")
+    }
         
     draw.SetFont(hud_font)
-    draw.Color(255, 255, 255, 255)
-    local nameW, nameH = draw.GetTextSize(playerName)
-    draw.TextShadow(math.floor(fullscreen_width/2 - nameW/2), math.floor(fullscreen_height - 140), playerName)
     
-    draw.Color(healthColor.r, healthColor.g, healthColor.b, 255)
+    -- Draw name with team-colored background and class icon
+    local nameW, textH = draw.GetTextSize(playerName)
+    local nameBgPadding = 20
+    local iconSize = 32
+    local nameY = math.floor(fullscreen_height - 140)
+    local totalWidth = nameW + iconSize + 10  -- 10 pixels padding between icon and name
+    
+    -- Draw semi-transparent team-colored background (extended for icon)
+    draw.Color(team_color.r, team_color.g, team_color.b, 100)
+    draw.FilledRectFade(
+        math.floor(fullscreen_width/2 - totalWidth/2 - nameBgPadding),
+        nameY - 5,
+        math.floor(fullscreen_width/2 + totalWidth/2 + nameBgPadding),
+        nameY + math.max(textH, iconSize) + 5,
+        100,
+        50,
+        true
+    )
+    
+    -- Draw name text (shifted right to make room for icon)
+    draw.Color(255, 255, 255, 255)
+    draw.TextShadow(
+        math.floor(fullscreen_width/2 - totalWidth/2 + iconSize + 10),
+        nameY,
+        playerName
+    )
+    
+    -- Draw class icon
+    local playerClass = target_player:GetPropInt("m_iClass")
+    local classIcon = class_icons[playerClass]
+    if classIcon then
+        draw.Color(255, 255, 255, 255)
+        local iconX = math.floor(fullscreen_width/2 - totalWidth/2)
+        local iconY = math.floor(nameY + textH/2 - iconSize/2)
+        render.DrawScreenSpaceRectangle(
+            classIcon,
+            iconX,
+            iconY,
+            math.floor(iconSize),
+            math.floor(iconSize),
+            0, 0,
+            32, 32,
+            32, 32
+        )
+    end
+    
+    -- Draw health with darker background
     local healthText = string.format("%d HP", health)
-    local textW, textH = draw.GetTextSize(healthText)
-    draw.TextShadow(math.floor(fullscreen_width/2 - textW/2), math.floor(fullscreen_height - 100), healthText)
+    local healthW, healthH = draw.GetTextSize(healthText)
+    local healthY = math.floor(fullscreen_height - 100)
+    
+    -- Draw semi-transparent background for health
+    draw.Color(0, 0, 0, 150)
+    draw.FilledRectFade(
+        math.floor(fullscreen_width/2 - healthW/2 - nameBgPadding),
+        healthY - 5,
+        math.floor(fullscreen_width/2 + healthW/2 + nameBgPadding),
+        healthY + healthH + 5,
+        100,
+        50,
+        true
+    )
+    
+    -- Draw health text
+    draw.Color(healthColor.r, healthColor.g, healthColor.b, 255)
+    draw.TextShadow(math.floor(fullscreen_width/2 - healthW/2), healthY, healthText)
 
     if first_person_mode then
         draw_crosshair(fullscreen_width/2, fullscreen_height/2, crosshairColor.r, crosshairColor.g, crosshairColor.b, 255)
@@ -581,6 +801,32 @@ end
 
 local function HandleCameraControls()
     local current_time = globals.RealTime()
+
+    -- Add Caps Lock check for cycling friendly players
+    if input.IsButtonPressed(KEY_CAPSLOCK) and current_time - last_key_press > key_delay then
+        CycleFriendlyPlayers()
+        last_key_press = current_time
+        free_camera = false
+    end
+
+    -- Add Mouse1 and Mouse2 checks for cycling all players
+    if input.IsButtonPressed(MOUSE_LEFT) and current_time - last_key_press > key_delay then
+        CycleAllPlayers(true)
+        last_key_press = current_time
+        free_camera = false
+    end
+
+    if input.IsButtonPressed(MOUSE_RIGHT) and current_time - last_key_press > key_delay then
+        CycleAllPlayers(false)
+        last_key_press = current_time
+        free_camera = false
+    end
+
+    -- Add Shift check for spectate lock
+    if input.IsButtonPressed(KEY_LSHIFT) and current_time - last_key_press > key_delay then
+        ToggleSpectateLock()
+        last_key_press = current_time
+    end
 
     if input.IsButtonPressed(KEY_LCONTROL) and current_time - last_key_press > key_delay then
         persistent_fullscreen = not persistent_fullscreen
@@ -653,6 +899,11 @@ callbacks.Register("DrawModel", function(ctx)
 end)
 
 callbacks.Register("CreateMove", function(cmd)
+    local localPlayer = entities.GetLocalPlayer()
+    if localPlayer and localPlayer:IsAlive() then
+        has_spawned_once = true
+    end
+
     if first_person_mode then return end
     
     -- Allow mouse movement in free cam or when in third person with target
@@ -676,148 +927,158 @@ callbacks.Register("PostRenderView", function(view)
     end
     
     local localPlayer = entities.GetLocalPlayer()
-    if not localPlayer or not localPlayer:IsAlive() then
-        local current_texture = persistent_fullscreen and fullscreen_texture or windowed_texture
-        local current_material = persistent_fullscreen and fullscreen_material or windowed_material
-        
-        if not current_texture or not current_material then return end
-
-        if camera_position == Vector3(0, 0, 0) then
-            camera_position = localPlayer:GetAbsOrigin() + Vector3(0, 0, 64)
-            own_view_angles = engine.GetViewAngles()
-            
-            if last_killer and last_killer:IsValid() and last_killer:IsAlive() and not last_killer:IsDormant() then
-                target_player = last_killer
-                first_person_mode = true
-                free_camera = false
-            else
-                CycleNextEnemy()
-                first_person_mode = true
-                free_camera = false
-            end
-            
-            last_killer = nil
-            fullscreen_mode = persistent_fullscreen
-        end
-
-        -- Clean up invalid target player
-        if target_player and (not target_player:IsValid() or not target_player:IsAlive() or target_player:IsDormant()) then
-            visited_players = {}
-            target_player = nil
-            CycleNextEnemy()
-        end
-
-        HandleCameraControls()
-
-        local customView = view
-        customView.origin = camera_position 
-        customView.angles = camera_angles
-        
-        if first_person_mode then
-            customView.fov = 120
-        end
-
-        render.Push3DView(customView, E_ClearFlags.VIEW_CLEAR_COLOR | E_ClearFlags.VIEW_CLEAR_DEPTH, current_texture)
-        render.ViewDrawScene(true, true, customView)
-        render.PopView()
-        
-        local render_x = fullscreen_mode and 0 or camera_x_position
-        local render_y = fullscreen_mode and 0 or camera_y_position
-        local render_width = fullscreen_mode and fullscreen_width or camera_width
-        local render_height = fullscreen_mode and fullscreen_height or camera_height
-
-        render.DrawScreenSpaceRectangle(
-            current_material,
-            render_x, render_y, 
-            render_width, render_height,
-            0, 0, 
-            render_width, render_height,
-            render_width, render_height
-        )
-    else
-        --camera_position = Vector3(0, 0, 0)
+    if not localPlayer then return end
+    
+    if localPlayer:IsAlive() then
+        has_spawned_once = true
+        is_in_game = true
+        camera_position = Vector3(0, 0, 0)
         CleanupState()
+        return
     end
+    
+    -- Only show spectator window if we've spawned before and are actually in-game
+    if not has_spawned_once or not is_in_game then return end
+
+    local current_texture = persistent_fullscreen and fullscreen_texture or windowed_texture
+    local current_material = persistent_fullscreen and fullscreen_material or windowed_material
+    
+    if not current_texture or not current_material then return end
+
+    if camera_position == Vector3(0, 0, 0) then
+        camera_position = localPlayer:GetAbsOrigin() + Vector3(0, 0, 64)
+        own_view_angles = engine.GetViewAngles()
+        
+        if last_killer and last_killer:IsValid() and last_killer:IsAlive() and not last_killer:IsDormant() then
+            target_player = last_killer
+            first_person_mode = true
+            free_camera = false
+        else
+            CycleNextEnemy()
+            first_person_mode = true
+            free_camera = false
+        end
+        
+        last_killer = nil
+        fullscreen_mode = persistent_fullscreen
+    end
+
+    -- Clean up invalid target player
+    if target_player and (not target_player:IsValid() or not target_player:IsAlive() or target_player:IsDormant()) then
+        visited_players = {}
+        target_player = nil
+        CycleNextEnemy()
+    end
+
+    HandleCameraControls()
+
+    local customView = view
+    customView.origin = camera_position 
+    customView.angles = camera_angles
+    
+    if first_person_mode then
+        customView.fov = 120
+    end
+
+    render.Push3DView(customView, E_ClearFlags.VIEW_CLEAR_COLOR | E_ClearFlags.VIEW_CLEAR_DEPTH, current_texture)
+    render.ViewDrawScene(true, true, customView)
+    render.PopView()
+    
+    local render_x = fullscreen_mode and 0 or camera_x_position
+    local render_y = fullscreen_mode and 0 or camera_y_position
+    local render_width = fullscreen_mode and fullscreen_width or camera_width
+    local render_height = fullscreen_mode and fullscreen_height or camera_height
+
+    render.DrawScreenSpaceRectangle(
+        current_material,
+        render_x, render_y, 
+        render_width, render_height,
+        0, 0, 
+        render_width, render_height,
+        render_width, render_height
+    )
 end)
 
--- Then modify the Draw callback to print when conditions are met
 callbacks.Register("Draw", function()
     if engine.Con_IsVisible() or engine.IsGameUIVisible() then 
         return
     end
 
     local localPlayer = entities.GetLocalPlayer()
-    if not localPlayer or not localPlayer:IsAlive() then
-        --print("Debug Draw: Player dead, fullscreen = " .. tostring(fullscreen_mode))  -- Debug print
-        
+    if not localPlayer or not has_spawned_once or not is_in_game then return end
+    
+    if not localPlayer:IsAlive() then
         if fullscreen_mode then
-            DrawSpectatorHUD()  -- Should now always draw at least respawn timer
+            DrawSpectatorHUD()
             DrawKillfeed()
+            return  -- Early return to skip drawing borders and controls in fullscreen
         end
-
-        if not fullscreen_mode then
-            draw.Color(235, 64, 52, 255)
-            draw.OutlinedRect(
-                math.floor(camera_x_position), 
-                math.floor(camera_y_position), 
-                math.floor(camera_x_position + camera_width),
-                math.floor(camera_y_position + camera_height)
-            )
-            
-            draw.OutlinedRect(
-                math.floor(camera_x_position), 
-                math.floor(camera_y_position - 20),
-                math.floor(camera_x_position + camera_width), 
-                math.floor(camera_y_position)
-            )
-            draw.Color(130, 26, 17, 255)
-            draw.FilledRect(
-                math.floor(camera_x_position + 1), 
-                math.floor(camera_y_position - 19),
-                math.floor(camera_x_position + camera_width - 1), 
-                math.floor(camera_y_position - 1)
-            )
-            
-            draw.SetFont(title_font)
-            draw.Color(255, 255, 255, 255)
-            local text = "Enemy Spectator"
-            if target_player then
-                local playerName = target_player:GetName()
-                if playerName then
-                    text = text .. " - " .. playerName
-                    if first_person_mode then
-                        text = text .. " (First Person)"
-                    elseif free_camera then
-                        text = text .. " (Free Camera)"
-                    end
+        
+        -- Only draw borders and controls in windowed mode
+        draw.Color(235, 64, 52, 255)
+        draw.OutlinedRect(
+            math.floor(camera_x_position), 
+            math.floor(camera_y_position), 
+            math.floor(camera_x_position + camera_width),
+            math.floor(camera_y_position + camera_height)
+        )
+        
+        draw.OutlinedRect(
+            math.floor(camera_x_position), 
+            math.floor(camera_y_position - 20),
+            math.floor(camera_x_position + camera_width), 
+            math.floor(camera_y_position)
+        )
+        draw.Color(130, 26, 17, 255)
+        draw.FilledRect(
+            math.floor(camera_x_position + 1), 
+            math.floor(camera_y_position - 19),
+            math.floor(camera_x_position + camera_width - 1), 
+            math.floor(camera_y_position - 1)
+        )
+        
+        draw.SetFont(title_font)
+        draw.Color(255, 255, 255, 255)
+        local text = "Enemy Spectator"
+        if target_player then
+            local playerName = target_player:GetName()
+            if playerName then
+                text = text .. " - " .. playerName
+                if first_person_mode then
+                    text = text .. " (First Person)"
+                elseif free_camera then
+                    text = text .. " (Free Camera)"
                 end
             end
-            
-            local textW, textH = draw.GetTextSize(text)
+        end
+        
+        local textW, textH = draw.GetTextSize(text)
+        draw.Text(
+            math.floor(camera_x_position + camera_width * 0.5 - textW * 0.5),
+            math.floor(camera_y_position - 16), 
+            text
+        )
+        
+        draw.Color(255, 255, 255, 200)
+        local controls = {
+            "Controls:",
+            "Move Mouse - Look around",
+            "Mouse1/Mouse2 - Cycle all players",
+            "WASD - Move camera",
+            "E/Q - Up/Down",
+            "Space - Toggle perspective",
+            "Tab - Cycle enemy players",
+            "CapsLock - Cycle friendly players",
+            "Shift - Toggle infinite spectate",
+            "Ctrl - Toggle fullscreen"
+        }
+        
+        for i, text in ipairs(controls) do
             draw.Text(
-                math.floor(camera_x_position + camera_width * 0.5 - textW * 0.5),
-                math.floor(camera_y_position - 16), 
+                math.floor(camera_x_position + 5),
+                math.floor(camera_y_position + camera_height + 5 + (i-1)*15),
                 text
             )
-            
-            draw.Color(255, 255, 255, 200)
-            local controls = {
-                "Controls:",
-                "Mouse - Look around",
-                "WASD - Move camera",
-                "E/Q - Up/Down",
-                "Space - Toggle perspective",
-                "Tab - Cycle enemy players",
-                "Ctrl - Toggle fullscreen"
-            }
-            
-            for i, text in ipairs(controls) do
-                draw.Text(
-                    math.floor(camera_x_position + 5),
-                    math.floor(camera_y_position + camera_height + 5 + (i-1)*15),
-                    text
-                )
-            end
         end
     end
 end)
