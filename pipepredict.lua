@@ -37,63 +37,89 @@ local config = {
     }
 }
 
+-- Cache last known sticky speeds for each player
+local lastKnownSpeeds = {}
+local debugTick = 0
 -- Calculate sticky charge for any player
 local function GetStickyChargeSpeed(player, weapon, isEnemy)
-    local baseSpeed = 900
+    local baseSpeed = config.weapons[TF_WEAPON_PIPEBOMBLAUNCHER].speed
     local maxChargeSpeed = 2400 -- Maximum speed with full charge
-    
+
     if not weapon then return baseSpeed end
-
-    -- Try multiple netvar paths to get charge data
-    local chargeBeginTime
-    if isEnemy then
-        -- Try different netvar paths for enemy charge
-        local paths = {
-            weapon:GetPropFloat("m_Shared", "m_flChargeBeginTime"),
-            weapon:GetPropFloat("LocalTFWeaponMedigunData", "m_flChargeLevel"),
-            weapon:GetPropFloat("m_flChargeBeginTime")
-        }
-        
-        -- Use first non-nil value
-        for _, time in ipairs(paths) do
-            if time and time ~= 0 then
-                chargeBeginTime = time
-                break
+    -- For local player, use direct netvar
+    if not isEnemy then
+        local chargeBeginTime = weapon:GetPropFloat("PipebombLauncherLocalData", "m_flChargeBeginTime") or 0
+        if chargeBeginTime > 0 then
+            local curTime = globals.CurTime()
+            local chargeTime = math.max(0, math.min(4, curTime - chargeBeginTime))
+            local speed = baseSpeed + (maxChargeSpeed - baseSpeed) * (chargeTime / 4)
+            if globals.TickCount() % 66 == 0 then
+                print(string.format("Local player charge - Time: %.2f, Speed: %.2f", chargeTime, speed))
             end
+            return speed
         end
-        
-        -- If we still don't have charge time, check if weapon is firing
-        if not chargeBeginTime or chargeBeginTime == 0 then
-            local isShooting = weapon:GetPropBool("m_bAttacking") or false
-            if isShooting then
-                -- If shooting, estimate charge based on client time
-                chargeBeginTime = globals.CurTime() - 0.1
-            end
-        end
-    else
-        -- Local player charge time
-        chargeBeginTime = weapon:GetPropFloat("PipebombLauncherLocalData", "m_flChargeBeginTime")
-    end
-
-    if not chargeBeginTime or chargeBeginTime == 0 then 
         return baseSpeed
     end
-    
-    -- Calculate charge time and clamp between 0-4 seconds
-    local chargeTime = math.max(0, math.min(4, globals.CurTime() - chargeBeginTime))
-    
-    -- Calculate speed based on charge time
-    local chargeSpeed = baseSpeed + (maxChargeSpeed - baseSpeed) * (chargeTime / 4)
-    
-    -- More detailed debug output for enemy charges
-    if isEnemy and globals.TickCount() % 66 == 0 then
-        print(string.format("Enemy charge data - BeginTime: %.2f, ChargeTime: %.2f, Speed: %.1f", 
-            chargeBeginTime, chargeTime, chargeSpeed))
-        print(string.format("Current time: %.2f, Delta: %.2f", 
-            globals.CurTime(), globals.CurTime() - chargeBeginTime))
+    -- For enemy players, check their most recently fired stickies
+    local playerIndex = player:GetIndex()
+    local curTime = globals.CurTime()
+    local currentTick = globals.TickCount()
+    -- Find all projectiles - use delayed debug print to avoid spam
+    if currentTick ~= debugTick and currentTick % 66 == 0 then
+        debugTick = currentTick
+        print("Looking for enemy sticky projectiles...")
     end
-    
-    return chargeSpeed
+
+    local detectedSpeed = nil
+    local projectiles = entities.FindByClass("CTFGrenadePipebombProjectile")
+    for _, proj in pairs(projectiles) do
+        -- Get owner of projectile
+        local owner = proj:GetPropEntity("m_hLauncher") 
+        if owner and owner == weapon then
+            -- Get initial velocity
+            local initialVel = proj:GetPropVector("m_vInitialVelocity")
+            if initialVel then
+                local speed = math.sqrt(initialVel.x * initialVel.x + initialVel.y * initialVel.y + initialVel.z * initialVel.z)
+
+                -- Update detected speed if this is faster (more charged)
+                if not detectedSpeed or speed > detectedSpeed then
+                    detectedSpeed = speed
+                end
+
+                -- Debug print projectile info
+                if currentTick ~= debugTick and currentTick % 66 == 0 then
+                    print(string.format("Enemy sticky found - Speed: %.2f vs Base: %.2f", speed, baseSpeed))
+                    print(string.format("Initial velocity: (%.1f, %.1f, %.1f)", initialVel.x, initialVel.y, initialVel.z))
+                end
+            end
+        end
+    end
+    -- If we found a charged projectile, update cache and use it
+    if detectedSpeed and detectedSpeed > baseSpeed then
+        lastKnownSpeeds[playerIndex] = {
+            speed = detectedSpeed,
+            time = curTime
+        }
+        if currentTick ~= debugTick and currentTick % 66 == 0 then
+            print(string.format("Using detected speed: %.2f (%.1f%% charged)", 
+                detectedSpeed,
+                ((detectedSpeed - baseSpeed) / (maxChargeSpeed - baseSpeed)) * 100))
+        end
+        return detectedSpeed
+    end
+    -- If we found a recent charged speed for this player, use it for a short time
+    local lastKnown = lastKnownSpeeds[playerIndex]
+    if lastKnown and (curTime - lastKnown.time) < 0.5 then -- Keep speed for 0.5 seconds
+        if currentTick ~= debugTick and currentTick % 66 == 0 then
+            print(string.format("Using cached speed: %.2f", lastKnown.speed))
+        end
+        return lastKnown.speed
+    end
+    -- Default to base speed
+    if currentTick ~= debugTick and currentTick % 66 == 0 then
+        print("Using base speed - no charge detected")
+    end
+    return baseSpeed
 end
 
 -- Get player eye position and angles
