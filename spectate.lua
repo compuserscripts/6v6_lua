@@ -39,6 +39,7 @@ local windowed_material = nil
 local fullscreen_texture = nil
 local fullscreen_material = nil
 local invisibleMaterial = nil
+local class_icon_materials = {}
 
 -- Killfeed variables
 local killfeed_deaths = {}
@@ -208,6 +209,34 @@ local function CleanupMaterials()
     fullscreen_material = nil
     invisibleMaterial = nil
     materials_initialized = false
+    class_icon_materials = {}
+end
+
+local function InitializeClassIcons()
+    local class_icons = {
+        [1] = "hud/leaderboard_class_scout",
+        [2] = "hud/leaderboard_class_sniper",
+        [3] = "hud/leaderboard_class_soldier",
+        [4] = "hud/leaderboard_class_demo",
+        [5] = "hud/leaderboard_class_medic",
+        [6] = "hud/leaderboard_class_heavy",
+        [7] = "hud/leaderboard_class_pyro",
+        [8] = "hud/leaderboard_class_spy",
+        [9] = "hud/leaderboard_class_engineer"
+    }
+    
+    for class_id, icon_path in pairs(class_icons) do
+        local material_name = string.format("class_icon_material_%d", class_id)
+        class_icon_materials[class_id] = materials.Create(material_name, string.format([[
+            UnlitGeneric
+            {
+                "$basetexture" "%s"
+                "$translucent" 1
+                "$ignorez" 1
+                "$nofog" 1
+            }
+        ]], icon_path))
+    end
 end
 
 -- Initialize all materials
@@ -255,6 +284,7 @@ local function InitializeAllMaterials()
         }
     ]])
 
+    InitializeClassIcons()
     materials_initialized = true
 end
 
@@ -711,19 +741,6 @@ local function DrawSpectatorHUD()
         [3] = {r = 153, g = 204, b = 255}  -- BLU
     }
     local team_color = team_colors[target_player:GetTeamNumber()] or {r = 255, g = 255, b = 255}
-    
-    -- Class icon mapping
-    local class_icons = {
-        [1] = materials.Find("hud/leaderboard_class_scout"),
-        [2] = materials.Find("hud/leaderboard_class_sniper"),
-        [3] = materials.Find("hud/leaderboard_class_soldier"),
-        [4] = materials.Find("hud/leaderboard_class_demo"),
-        [5] = materials.Find("hud/leaderboard_class_medic"),
-        [6] = materials.Find("hud/leaderboard_class_heavy"),
-        [7] = materials.Find("hud/leaderboard_class_pyro"),
-        [8] = materials.Find("hud/leaderboard_class_spy"),
-        [9] = materials.Find("hud/leaderboard_class_engineer")
-    }
         
     draw.SetFont(hud_font)
     
@@ -754,9 +771,9 @@ local function DrawSpectatorHUD()
         playerName
     )
     
-    -- Draw class icon
+    -- Draw class icon using our custom materials
     local playerClass = target_player:GetPropInt("m_iClass")
-    local classIcon = class_icons[playerClass]
+    local classIcon = class_icon_materials[playerClass]
     if classIcon then
         draw.Color(255, 255, 255, 255)
         local iconX = math.floor(fullscreen_width/2 - totalWidth/2)
