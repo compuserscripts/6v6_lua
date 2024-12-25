@@ -5,7 +5,7 @@ local VELOCITY_SCALE = 0.4        -- Double scaling factor
 local RELEASE_TICKS = 20          -- Much more aggressive tick threshold
 local MAX_PREDICTION_TICKS = 24   -- Shorter prediction window
 local TICK_INTERVAL = globals.TickInterval()
-local GRAVITY = client.GetConVar("sv_gravity") or 800
+local GRAVITY = client.GetConVar("sv_gravity") or 800 -- default is 800
 
 -- State variables
 local isJumpbugArmed = false
