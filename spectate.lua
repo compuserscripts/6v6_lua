@@ -208,8 +208,8 @@ local function CleanupMaterials()
     windowed_material = nil
     fullscreen_material = nil
     invisibleMaterial = nil
-    materials_initialized = false
     class_icon_materials = {}
+    materials_initialized = false
 end
 
 local function InitializeAllMaterials()
