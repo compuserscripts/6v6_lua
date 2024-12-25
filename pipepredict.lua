@@ -40,12 +40,14 @@ local config = {
 -- Cache last known sticky speeds for each player
 local lastKnownSpeeds = {}
 local debugTick = 0
+
 -- Calculate sticky charge for any player
 local function GetStickyChargeSpeed(player, weapon, isEnemy)
     local baseSpeed = config.weapons[TF_WEAPON_PIPEBOMBLAUNCHER].speed
     local maxChargeSpeed = 2400 -- Maximum speed with full charge
-
+    
     if not weapon then return baseSpeed end
+
     -- For local player, use direct netvar
     if not isEnemy then
         local chargeBeginTime = weapon:GetPropFloat("PipebombLauncherLocalData", "m_flChargeBeginTime") or 0
@@ -60,16 +62,18 @@ local function GetStickyChargeSpeed(player, weapon, isEnemy)
         end
         return baseSpeed
     end
+
     -- For enemy players, check their most recently fired stickies
     local playerIndex = player:GetIndex()
     local curTime = globals.CurTime()
     local currentTick = globals.TickCount()
+
     -- Find all projectiles - use delayed debug print to avoid spam
     if currentTick ~= debugTick and currentTick % 66 == 0 then
         debugTick = currentTick
         print("Looking for enemy sticky projectiles...")
     end
-
+    
     local detectedSpeed = nil
     local projectiles = entities.FindByClass("CTFGrenadePipebombProjectile")
     for _, proj in pairs(projectiles) do
@@ -80,41 +84,41 @@ local function GetStickyChargeSpeed(player, weapon, isEnemy)
             local initialVel = proj:GetPropVector("m_vInitialVelocity")
             if initialVel then
                 local speed = math.sqrt(initialVel.x * initialVel.x + initialVel.y * initialVel.y + initialVel.z * initialVel.z)
-
-                -- Update detected speed if this is faster (more charged)
-                if not detectedSpeed or speed > detectedSpeed then
-                    detectedSpeed = speed
-                end
-
+                
+                -- Always use latest sticky speed when finding a new one
+                detectedSpeed = speed
+                
                 -- Debug print projectile info
                 if currentTick ~= debugTick and currentTick % 66 == 0 then
-                    print(string.format("Enemy sticky found - Speed: %.2f vs Base: %.2f", speed, baseSpeed))
-                    print(string.format("Initial velocity: (%.1f, %.1f, %.1f)", initialVel.x, initialVel.y, initialVel.z))
+                    print(string.format("Enemy sticky found - Speed: %.2f", speed))
                 end
             end
         end
     end
-    -- If we found a charged projectile, update cache and use it
-    if detectedSpeed and detectedSpeed > baseSpeed then
+
+    -- If we found any sticky at all, use and cache its speed
+    if detectedSpeed then
         lastKnownSpeeds[playerIndex] = {
             speed = detectedSpeed,
             time = curTime
         }
         if currentTick ~= debugTick and currentTick % 66 == 0 then
-            print(string.format("Using detected speed: %.2f (%.1f%% charged)", 
+            print(string.format("Using sticky speed: %.2f (%.1f%% charged)", 
                 detectedSpeed,
                 ((detectedSpeed - baseSpeed) / (maxChargeSpeed - baseSpeed)) * 100))
         end
         return detectedSpeed
     end
-    -- If we found a recent charged speed for this player, use it for a short time
+
+    -- If we found a recent speed for this player, use it
     local lastKnown = lastKnownSpeeds[playerIndex]
-    if lastKnown and (curTime - lastKnown.time) < 0.5 then -- Keep speed for 0.5 seconds
+    if lastKnown and (curTime - lastKnown.time) < 0.5 then
         if currentTick ~= debugTick and currentTick % 66 == 0 then
             print(string.format("Using cached speed: %.2f", lastKnown.speed))
         end
         return lastKnown.speed
     end
+
     -- Default to base speed
     if currentTick ~= debugTick and currentTick % 66 == 0 then
         print("Using base speed - no charge detected")
