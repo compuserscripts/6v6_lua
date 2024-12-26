@@ -29,6 +29,9 @@ local ScopeRenderer = {
     lbox = {
         noscope = gui.GetValue("No Scope") or 0,
         sens = client.GetConVar("zoom_sensitivity_ratio") or 1,
+    },
+    settings = {
+        show_friendly = true,  -- Toggle for friendly hitboxes
     }
 }
 
@@ -182,8 +185,13 @@ callbacks.Register("Draw", function()
     local localPlayer = entities.GetLocalPlayer()
     
     if localPlayer and ScopeRenderer.view.custom then
+        local localTeam = localPlayer:GetTeamNumber()
         for _, player in pairs(players) do
             if player:IsAlive() and not player:IsDormant() and player:GetIndex() ~= localPlayer:GetIndex() then
+
+                -- Skip friendly players if show_friendly is false
+                if not ScopeRenderer.settings.show_friendly and player:GetTeamNumber() == localTeam then return end
+
                 local hitboxes = player:GetHitboxes()
                 if hitboxes then
                     local headHitbox = hitboxes[1]
