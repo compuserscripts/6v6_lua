@@ -22,6 +22,13 @@ local ScopeRenderer = {
     view = {
         custom = nil,
         new_style = true
+    },
+    fonts = {
+        display = nil,  -- Store font reference
+    },
+    lbox = {
+        noscope = gui.GetValue("No Scope") or 0,
+        sens = client.GetConVar("zoom_sensitivity_ratio") or 1,
     }
 }
 
@@ -31,11 +38,42 @@ local TEAM_COLORS = {
     [3] = {r = 237, g = 84, b = 84, a = 100}    -- RED
 }
 
--- Initialize materials only once when needed
-function ScopeRenderer:InitializeMaterials()
-    if self.materials.material then return true end
+-- Calculate zoom sensitivity ratio based on FOVs
+function ScopeRenderer:CalculateZoomSensitivityRatio(hipFOV, zoomFOV)
+    -- Formula: (tan(zoom_fov/2) * hip_fov) / (tan(hip_fov/2) * zoom_fov)
+    local zoomRad = math.rad(zoomFOV/2)
+    local hipRad = math.rad(hipFOV/2)
+    return (math.tan(zoomRad) * hipFOV) / (math.tan(hipRad) * zoomFOV)
+end
+
+-- Initialize materials and fonts only once when needed
+function ScopeRenderer:Initialize()
+    -- Initialize font if not already done
+    if not self.fonts.display then
+        self.fonts.display = draw.CreateFont("Arial", 20, 800)
+        -- Set initial zoom sensitivity ratio for 90 FOV
+        client.SetConVar("zoom_sensitivity_ratio", ScopeRenderer.lbox.sens)
+        gui.SetValue("No Scope", 1)
+    end
     
-    -- Get current screen dimensions
+    -- Check if we need to create/update materials
+    if self.materials.material then
+        -- Update screen size if needed
+        local new_width, new_height = draw.GetScreenSize()
+        if new_width ~= self.screen.width or new_height ~= self.screen.height then
+            self.screen.width = new_width
+            self.screen.height = new_height
+            -- Recreate texture with new size
+            if self.materials.texture then
+                self.materials.texture = nil
+            end
+            self.materials.texture = materials.CreateTextureRenderTarget("scope_tex_persistent", self.screen.width, self.screen.height)
+            if not self.materials.texture then return false end
+        end
+        return true
+    end
+    
+    -- First time initialization
     self.screen.width, self.screen.height = draw.GetScreenSize()
     
     -- Create fullscreen texture 
@@ -97,19 +135,45 @@ callbacks.Register("Draw", function()
     draw.FilledRect(0, ScopeRenderer.screen.height/2, ScopeRenderer.screen.width, ScopeRenderer.screen.height/2 + 1)
     draw.FilledRect(ScopeRenderer.screen.width/2, 0, ScopeRenderer.screen.width/2 + 1, ScopeRenderer.screen.height)
 
+    -- Draw current FOV and sensitivity ratio
+    draw.Color(255, 255, 255, 255)
+    draw.SetFont(ScopeRenderer.fonts.display) -- Use stored font
+    local currentZoomFOV = ScopeRenderer.zoom.base_fov + ScopeRenderer.zoom.offset
+    -- Calculate the ratio using the same formula we use to set it
+    local currentSensRatio = ScopeRenderer:CalculateZoomSensitivityRatio(ScopeRenderer.zoom.base_fov, currentZoomFOV)
+    local fovText = string.format("FOV: %.1f°", currentZoomFOV)
+    local sensText = string.format("Sens Ratio: %.6f", currentSensRatio)
+    local fov_w, fov_h = draw.GetTextSize(fovText)
+    local sens_w, sens_h = draw.GetTextSize(sensText)
+    
+    -- Draw FOV and sensitivity info - ensure color is set before each draw
+    draw.Color(255, 255, 255, 255)
+    draw.Text(20, ScopeRenderer.screen.height - fov_h - sens_h - 20, fovText)
+    draw.Color(255, 255, 255, 255)
+    draw.Text(20, ScopeRenderer.screen.height - sens_h - 15, sensText)
+
+    -- Draw FOV and sensitivity info - ensure color is set before each draw
+    draw.Color(255, 255, 255, 255)
+    draw.Text(20, ScopeRenderer.screen.height - fov_h - sens_h - 20, fovText)
+    draw.Color(255, 255, 255, 255)
+    draw.Text(20, ScopeRenderer.screen.height - sens_h - 15, sensText)
+
     -- Draw zoom lock warning
     if ScopeRenderer.zoom.warning.alpha > 0 then
         local current_time = globals.RealTime()
         local time_since_warning = current_time - ScopeRenderer.zoom.warning.fade_start
         if time_since_warning < 1.0 then
-            ScopeRenderer.zoom.warning.alpha = math.floor(math.max(0, 255 * (1.0 - time_since_warning)))
+            -- Ensure alpha never goes below 2
+            ScopeRenderer.zoom.warning.alpha = math.floor(math.max(2, 255 * (1.0 - time_since_warning)))
             draw.Color(255, 0, 0, ScopeRenderer.zoom.warning.alpha)
-            draw.SetFont(draw.CreateFont("Arial", 20, 800))
+            draw.SetFont(ScopeRenderer.fonts.display) -- Use stored font
             local warning_text = "Zoom Locked!"
             local text_w, text_h = draw.GetTextSize(warning_text)
+            -- Reset color before text draw
+            draw.Color(255, 0, 0, ScopeRenderer.zoom.warning.alpha)
             draw.Text(ScopeRenderer.screen.width - text_w - 20, ScopeRenderer.screen.height - text_h - 20, warning_text)
         else
-            ScopeRenderer.zoom.warning.alpha = 0
+            ScopeRenderer.zoom.warning.alpha = 2 -- Set to 2 instead of 0
         end
     end
 
@@ -165,9 +229,11 @@ callbacks.Register("Draw", function()
 
                             local teamColor = TEAM_COLORS[player:GetTeamNumber()]
                             if teamColor then
-                                -- Ensure color is set before drawing
-                                draw.Color(teamColor.r, teamColor.g, teamColor.b, teamColor.a)
+                                -- Ensure color is set before drawing with minimum alpha of 2
+                                draw.Color(teamColor.r, teamColor.g, teamColor.b, math.max(2, teamColor.a))
                                 if left and right and top and bottom then -- Make sure we have valid coordinates
+                                    -- Reset color before rect draw to ensure it's set
+                                    draw.Color(teamColor.r, teamColor.g, teamColor.b, math.max(2, teamColor.a))
                                     draw.FilledRect(left, top, right, bottom)
                                 end
                             end
@@ -229,13 +295,19 @@ callbacks.Register("PostRenderView", function(view)
     
     if not ScopeRenderer:IsScoped() then return end
     
-    if not ScopeRenderer:InitializeMaterials() then return end
+    if not ScopeRenderer:Initialize() then return end
     
-    -- Set up custom view
+    -- Set up custom view with zoom FOV
     local customView = view
     customView.angles = engine.GetViewAngles()
-    customView.fov = ScopeRenderer.zoom.base_fov + ScopeRenderer.zoom.offset
+    local currentZoomFOV = ScopeRenderer.zoom.base_fov + ScopeRenderer.zoom.offset
+    customView.fov = currentZoomFOV
     ScopeRenderer.view.custom = customView
+    
+    -- Update zoom sensitivity based on our actual rendered FOV
+    local hipFOV = ScopeRenderer.zoom.base_fov
+    local newRatio = ScopeRenderer:CalculateZoomSensitivityRatio(hipFOV, currentZoomFOV)
+    client.SetConVar("zoom_sensitivity_ratio", tostring(newRatio))
     
     -- Render the scene to our texture
     render.Push3DView(customView, E_ClearFlags.VIEW_CLEAR_COLOR | E_ClearFlags.VIEW_CLEAR_DEPTH, ScopeRenderer.materials.texture)
@@ -257,4 +329,8 @@ end)
 callbacks.Register("Unload", function()
     -- We don't destroy materials anymore, they persist between script reloads
     ScopeRenderer.view.custom = nil
+    
+    -- Reset zoom sensitivity ratio to default TF2 sniper value on unload
+    client.SetConVar("zoom_sensitivity_ratio", ScopeRenderer.lbox.sens)
+    gui.SetValue("No Scope", ScopeRenderer.lbox.noscope)
 end)
