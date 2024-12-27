@@ -35,17 +35,10 @@ local sentryTargetingLocal = {}
 
 -- Create chams material
 local chamsMaterial = materials.Create("sentry_chams", [[
-    "VertexLitGeneric"
+    "UnlitGeneric"
     {
         "$basetexture" "vgui/white_additive"
-        "$bumpmap" "vgui/white_additive"
         "$color2" "[1 0 0]"
-        "$selfillum" "1"
-        "$ignorez" "1"
-        "$model" "1"
-        "$selfIllumFresnel" "1"
-        "$selfIllumFresnelMinMaxExp" "[0.1 0.2 0.3]"
-        "$selfillumtint" "[0.6 0 0]"
     }
 ]])
 
