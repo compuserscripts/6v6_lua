@@ -21,7 +21,8 @@ LoadScript(path .. [[\sentryline.lua ]])
 LoadScript(path .. [[\preventuncloak.lua ]])
 LoadScript(path .. [[\stickycam.lua ]])
 LoadScript(path .. [[\chatbubbles.lua ]])
-LoadScript(path .. [[\betterscope.lua ]])
+--disabled due to zoom sensitivity ratio calculation being detectable. i see no reason to use the script without it
+--LoadScript(path .. [[\betterscope.lua ]])
 LoadScript(path .. [[\pipepredict.lua ]])
 
 callbacks.Register("Unload", function()
