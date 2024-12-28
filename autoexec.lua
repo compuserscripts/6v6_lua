@@ -13,6 +13,7 @@ LoadScript(path .. [[\hiders.lua ]])
 LoadScript(path .. [[\focusfire.lua ]])
 LoadScript(path .. [[\arrow.lua ]])
 LoadScript(path .. [[\spectate.lua ]])
+--disabled due to potential fps drain. counterproductive in comp lol
 --LoadScript(path .. [[\nohats.lua ]])
 LoadScript(path .. [[\beam.lua ]])
 LoadScript(path .. [[\jumptrajectory.lua ]])
@@ -21,9 +22,10 @@ LoadScript(path .. [[\sentryline.lua ]])
 LoadScript(path .. [[\preventuncloak.lua ]])
 LoadScript(path .. [[\stickycam.lua ]])
 LoadScript(path .. [[\chatbubbles.lua ]])
---disabled due to zoom sensitivity ratio calculation being detectable. i see no reason to use the script without it
+--disabled due to zoom sensitivity ratio calculation being detectable (rapidly changing value) i see no reason to use the script without it
 --LoadScript(path .. [[\betterscope.lua ]])
-LoadScript(path .. [[\pipepredict.lua ]])
+--not ready for general use
+--LoadScript(path .. [[\pipepredict.lua ]])
 
 callbacks.Register("Unload", function()
     UnloadScript(path .. [[\ammo.lua ]])
