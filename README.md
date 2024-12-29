@@ -90,6 +90,7 @@ sticky radius script
 
 
 medic heal cam - either for medic themself or any player on the team
+toggle between enemy and friendly med
 
 will display the vision of teammate being healed in a window
 
