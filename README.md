@@ -99,3 +99,5 @@ will display the vision of teammate being healed in a window
 small update/notification library - if present we load it and auto update scripts and display notifications
 
 menu for configuring everything>
+
+modify esp to not draw for sourcemod invisible players
