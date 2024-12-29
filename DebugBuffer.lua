@@ -187,4 +187,4 @@ end
 -- Register cleanup on script unload
 callbacks.Register("Unload", "CleanupBitBufferDebug", cleanup)
 
-print("Lmaobox-Compatible BitBuffer Debug Script loaded. Check chat for detailed message analysis.")
+print("Lmaobox-Compatible BitBuffer Debug Script loaded. Check console for detailed message analysis.")
