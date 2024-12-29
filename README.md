@@ -101,3 +101,7 @@ small update/notification library - if present we load it and auto update script
 menu for configuring everything>
 
 modify esp to not draw for sourcemod invisible players
+
+_cl_classmenuopen
+returns 0 if closed, 1 if open
+for spectate script
