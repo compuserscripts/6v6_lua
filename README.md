@@ -87,6 +87,12 @@ spectaet script - only apply invisible chams if in first person
 
 sticky radius script
 
+
+
+medic heal cam - either for medic themself or any player on the team
+
+will display the vision of teammate being healed in a window
+
 small update/notification library - if present we load it and auto update scripts and display notifications
 
 menu for configuring everything>
