@@ -6,125 +6,6 @@ function bit.bor(a, b) local result = 0 local bitval = 1 while a > 0 or b > 0 do
 function bit.lshift(a, b) return a * (2 ^ b) end
 function bit.rshift(a, b) return math.floor(a / (2 ^ b)) end
 
--- Enhanced BitBuffer implementation
-local function createBuffer()
-    local buffer = {
-        data = {},
-        position = 1,
-        bitPosition = 0
-    }
-    
-    -- Write functions
-    function buffer:writeByte(byte)
-        table.insert(self.data, byte)
-    end
-    
-    -- Read functions
-    function buffer:readBit()
-        if self.position > #self.data then return 0 end
-        
-        local byte = self.data[self.position]
-        local bit = bit.band(bit.rshift(byte, 7 - self.bitPosition), 1)
-        
-        self.bitPosition = self.bitPosition + 1
-        if self.bitPosition == 8 then
-            self.bitPosition = 0
-            self.position = self.position + 1
-        end
-        
-        return bit
-    end
-    
-    function buffer:readByte()
-        if self.position > #self.data then return nil end
-        
-        if self.bitPosition == 0 then
-            local byte = self.data[self.position]
-            self.position = self.position + 1
-            return byte
-        else
-            -- Handle unaligned reads
-            local firstPart = bit.lshift(bit.band(self.data[self.position], bit.lshift(1, 8 - self.bitPosition) - 1), self.bitPosition)
-            self.position = self.position + 1
-            
-            if self.position > #self.data then return firstPart end
-            
-            local secondPart = bit.rshift(self.data[self.position], 8 - self.bitPosition)
-            return bit.bor(firstPart, secondPart)
-        end
-    end
-    
-    function buffer:readUInt(width)
-        local value = 0
-        for i = 1, width do
-            value = bit.bor(bit.lshift(value, 1), self:readBit())
-        end
-        return value
-    end
-    
-    function buffer:readInt(width)
-        local value = self:readUInt(width)
-        local sign = bit.band(value, bit.lshift(1, width - 1))
-        if sign ~= 0 then
-            value = value - bit.lshift(1, width)
-        end
-        return value
-    end
-    
-    function buffer:readVarInt32()
-        local result = 0
-        local shift = 0
-        while true do
-            local b = self:readByte()
-            result = bit.bor(result, bit.lshift(bit.band(b, 0x7F), shift))
-            if bit.band(b, 0x80) == 0 then
-                return result
-            end
-            shift = shift + 7
-        end
-    end
-    
-    function buffer:readFloat()
-        local bytes = {self:readByte(), self:readByte(), self:readByte(), self:readByte()}
-        local int = bytes[1] + bytes[2] * 256 + bytes[3] * 65536 + bytes[4] * 16777216
-        local sign = bit.band(int, 0x80000000) ~= 0
-        local exp = bit.band(bit.rshift(int, 23), 0xFF)
-        local frac = bit.band(int, 0x7FFFFF)
-        
-        if exp == 0 and frac == 0 then return 0 end
-        if exp == 0xFF then
-            if frac == 0 then return sign and -math.huge or math.huge end
-            return 0/0  -- NaN
-        end
-        
-        local value = 1 + frac / 0x800000
-        value = value * (2 ^ (exp - 127))
-        if sign then value = -value end
-        return value
-    end
-    
-    -- Utility functions
-    function buffer:reset()
-        self.position = 1
-        self.bitPosition = 0
-    end
-    
-    function buffer:getSize()
-        return #self.data
-    end
-    
-    -- Get binary representation of a byte
-    function buffer:getBitPattern(byte)
-        local pattern = ""
-        for i = 7, 0, -1 do
-            pattern = pattern .. (bit.band(byte, bit.lshift(1, i)) ~= 0 and "1" or "0")
-        end
-        return pattern
-    end
-
-    return buffer
-end
-
 -- Message type definitions
 local MESSAGE_DEFS = {
     [0] = {name = "Geiger", size = 1},
@@ -212,90 +93,373 @@ local MESSAGE_DEFS = {
     [82] = {name = "HapMeleeContact", size = 0}
 }
 
--- Enhanced analysis function
+-- Enhanced BitBuffer implementation
+local function createBuffer()
+    local buffer = {
+        data = {},
+        position = 1,
+        bitPosition = 0
+    }
+    
+    -- Write functions
+    function buffer:writeByte(byte)
+        -- Convert negative bytes to unsigned
+        if byte < 0 then
+            byte = byte + 256
+        end
+        table.insert(self.data, byte)
+    end
+    
+    -- Read functions
+    function buffer:readBit()
+        if self.position > #self.data then return 0 end
+        
+        local byte = self.data[self.position]
+        local bit = bit.band(bit.rshift(byte, 7 - self.bitPosition), 1)
+        
+        self.bitPosition = self.bitPosition + 1
+        if self.bitPosition == 8 then
+            self.bitPosition = 0
+            self.position = self.position + 1
+        end
+        
+        return bit
+    end
+    
+    function buffer:readByte()
+        if self.position > #self.data then return nil end
+        
+        if self.bitPosition == 0 then
+            local byte = self.data[self.position]
+            self.position = self.position + 1
+            return byte
+        else
+            -- Handle unaligned reads
+            local firstPart = bit.lshift(bit.band(self.data[self.position], bit.lshift(1, 8 - self.bitPosition) - 1), self.bitPosition)
+            self.position = self.position + 1
+            
+            if self.position > #self.data then return firstPart end
+            
+            local secondPart = bit.rshift(self.data[self.position], 8 - self.bitPosition)
+            return bit.bor(firstPart, secondPart)
+        end
+    end
+    
+    function buffer:readUInt(width)
+        local value = 0
+        for i = 1, width do
+            value = bit.bor(bit.lshift(value, 1), self:readBit())
+        end
+        return value
+    end
+    
+    function buffer:readInt(width)
+        local value = self:readUInt(width)
+        local sign = bit.band(value, bit.lshift(1, width - 1))
+        if sign ~= 0 then
+            value = value - bit.lshift(1, width)
+        end
+        return value
+    end
+    
+    function buffer:readVarInt32()
+        local result = 0
+        local shift = 0
+        while true do
+            local b = self:readByte()
+            if not b then break end
+            result = bit.bor(result, bit.lshift(bit.band(b, 0x7F), shift))
+            if bit.band(b, 0x80) == 0 then
+                return result
+            end
+            shift = shift + 7
+        end
+        return result
+    end
+
+    -- UTF-8 aware string reading
+    function buffer:readUTF8String()
+        local result = {}
+        local savedPos = self.position
+        
+        while self.position <= #self.data do
+            local byte = self:readByte()
+            if not byte or byte == 0 then break end
+            
+            -- UTF-8 sequence detection
+            if byte >= 0xF0 then -- 4 bytes
+                local b2, b3, b4 = self:readByte(), self:readByte(), self:readByte()
+                if b2 and b3 and b4 then
+                    local char = string.char(byte, b2, b3, b4)
+                    table.insert(result, char)
+                end
+            elseif byte >= 0xE0 then -- 3 bytes
+                local b2, b3 = self:readByte(), self:readByte()
+                if b2 and b3 then
+                    local char = string.char(byte, b2, b3)
+                    table.insert(result, char)
+                end
+            elseif byte >= 0xC0 then -- 2 bytes
+                local b2 = self:readByte()
+                if b2 then
+                    local char = string.char(byte, b2)
+                    table.insert(result, char)
+                end
+            elseif byte >= 0x20 and byte <= 0x7E then -- ASCII printable
+                table.insert(result, string.char(byte))
+            end
+        end
+        
+        -- Reset position if no valid string found
+        if #result == 0 then
+            self.position = savedPos
+        end
+        
+        return table.concat(result)
+    end
+
+    function buffer:findStrings(minLength)
+        local strings = {}
+        local savedPosition = self.position
+        self:reset()
+
+        -- Track complete message sections
+        local sections = {}
+        local currentSection = {}
+        local inSection = false
+        
+        while self.position <= #self.data do
+            local byte = self:readByte()
+            if not byte then break end
+            
+            -- Start or continue section on printable chars
+            if (byte >= 0x20 and byte <= 0x7E) or byte >= 0x80 then
+                if not inSection then
+                    currentSection = {
+                        start = self.position - 1,
+                        bytes = {}
+                    }
+                    inSection = true
+                end
+                table.insert(currentSection.bytes, byte)
+            else
+                -- End section on non-printable chars
+                if inSection and #currentSection.bytes >= (minLength or 3) then
+                    currentSection.endPos = self.position - 1
+                    -- Convert bytes to string safely
+            local chars = {}
+            for _, byte in ipairs(currentSection.bytes) do
+                table.insert(chars, string.char(byte))
+            end
+            currentSection.str = table.concat(chars)
+                    table.insert(sections, currentSection)
+                end
+                inSection = false
+            end
+        end
+        
+        -- Handle last section
+        if inSection and #currentSection.bytes >= (minLength or 3) then
+            currentSection.endPos = self.position - 1
+            -- Convert bytes to string safely
+            local chars = {}
+            for _, byte in ipairs(currentSection.bytes) do
+                table.insert(chars, string.char(byte))
+            end
+            currentSection.str = table.concat(chars)
+            table.insert(sections, currentSection)
+        end
+        
+        -- Filter out subsequences
+        for i = 1, #sections do
+            local isSubsequence = false
+            for j = 1, #sections do
+                if i ~= j and 
+                   sections[i].start >= sections[j].start and 
+                   sections[i].endPos <= sections[j].endPos then
+                    isSubsequence = true
+                    break
+                end
+            end
+            if not isSubsequence then
+                table.insert(strings, sections[i].str)
+            end
+        end
+        
+        self.position = savedPosition
+        return strings
+    end
+
+    -- Format byte for display
+    function buffer:formatByte(byte)
+        if not byte then return "nil", "." end
+        
+        local char = "."
+        -- Only show ASCII printable chars directly
+        if byte >= 0x20 and byte <= 0x7E then
+            char = string.char(byte)
+        -- For UTF-8 lead bytes, show •
+        -- For UTF-8 continuation bytes, show ·
+        elseif byte >= 0xF0 then  -- 4-byte lead
+            char = "•4"
+        elseif byte >= 0xE0 then  -- 3-byte lead
+            char = "•3"
+        elseif byte >= 0xC0 then  -- 2-byte lead
+            char = "•2"
+        elseif byte >= 0x80 then  -- continuation
+            char = "·"
+        end
+        
+        return string.format("0x%02X", byte), char
+    end
+
+    -- Get binary representation of a byte
+    function buffer:getBitPattern(byte)
+        if not byte then return "00000000" end
+        local pattern = ""
+        for i = 7, 0, -1 do
+            pattern = pattern .. (bit.band(byte, bit.lshift(1, i)) ~= 0 and "1" or "0")
+        end
+        return pattern
+    end
+
+    function buffer:reset()
+        self.position = 1
+        self.bitPosition = 0
+    end
+    
+    function buffer:getSize()
+        return #self.data
+    end
+
+    return buffer
+end
+
 local function analyzeBuffer(buffer, msgType)
     local output = {}
     local msgDef = MESSAGE_DEFS[msgType]
     
-    -- Basic message info
-    if not msgDef then
-        table.insert(output, "Unknown Message Type: " .. msgType)
-        return table.concat(output, "\n")
-    end
+    -- Print header
+    print("\n=== New Message Received ===")
+    print(string.format("Message Type: %d (%s)", msgType, msgDef and msgDef.name or "Unknown"))
+    print(string.format("Expected Size: %s", msgDef and (msgDef.size == -1 and "Variable" or msgDef.size) or "Unknown"))
     
-    table.insert(output, string.format("Message Type: %d (%s)", msgType, msgDef.name))
-    table.insert(output, string.format("Expected Size: %s", msgDef.size == -1 and "Variable" or msgDef.size))
+    -- Analyze byte types in the message
+    local byteTypes = {
+        control = 0,
+        ascii = 0,
+        utf8_lead = 0,
+        utf8_cont = 0
+    }
     
-    -- Analyze all bytes
-    local totalBytes = {}
-    local byteStrings = {}
-    local strings = {}
-    local currentString = {}
-    
-    -- Read all bytes
     buffer:reset()
-    local byteCount = 0
     local byte = buffer:readByte()
-    
     while byte do
-        byteCount = byteCount + 1
-        
-        -- Store raw byte
-        table.insert(totalBytes, byte)
-        
-        -- Format byte info with binary pattern
-        table.insert(byteStrings, string.format("Byte %3d: 0x%02X  Bits: %s  Char: %s", 
-            byteCount,
-            byte,
-            buffer:getBitPattern(byte),
-            byte >= 32 and byte <= 126 and string.char(byte) or "."
-        ))
-        
-        -- Collect printable characters
-        if byte >= 32 and byte <= 126 then
-            table.insert(currentString, string.char(byte))
-        elseif #currentString > 0 then
-            if #currentString >= 3 then
-                table.insert(strings, table.concat(currentString))
-            end
-            currentString = {}
+        if byte < 0x20 then
+            byteTypes.control = byteTypes.control + 1
+        elseif byte <= 0x7E then
+            byteTypes.ascii = byteTypes.ascii + 1
+        elseif byte >= 0xC0 and byte <= 0xF7 then
+            byteTypes.utf8_lead = byteTypes.utf8_lead + 1
+        elseif byte >= 0x80 then
+            byteTypes.utf8_cont = byteTypes.utf8_cont + 1
         end
-        
         byte = buffer:readByte()
     end
     
-    if #currentString >= 3 then
-        table.insert(strings, table.concat(currentString))
+    -- Print encoding analysis if we found any non-ASCII bytes
+    if byteTypes.utf8_lead > 0 or byteTypes.utf8_cont > 0 then
+        print("\nByte Encoding Analysis:")
+        print(string.format("- ASCII text (0x20-0x7E): %d bytes", byteTypes.ascii))
+        print(string.format("- UTF-8 sequences: %d sequences (%d lead + %d continuation bytes)", 
+            byteTypes.utf8_lead, byteTypes.utf8_lead, byteTypes.utf8_cont))
+        print(string.format("- Control bytes: %d", byteTypes.control))
     end
     
-    table.insert(output, string.format("Actual Size: %d bytes", byteCount))
-    
-    -- Add found strings
+    -- Find strings
+    local strings = buffer:findStrings(3)
     if #strings > 0 then
-        table.insert(output, "\nStrings found:")
+        print("\nStrings found:")
         for i, str in ipairs(strings) do
-            table.insert(output, string.format("%2d: \"%s\"", i, str))
+            print(string.format("%2d: \"%s\"", i, str))
         end
     end
     
-    -- Add byte analysis
-    table.insert(output, "\nByte analysis:")
-    table.insert(output, table.concat(byteStrings, "\n"))
+    -- Check for VarInt32
+    buffer:reset()
+    if msgDef and msgDef.size == -1 then
+        local varInt = buffer:readVarInt32()
+        if varInt then
+            print(string.format("\nLeading VarInt32: %d", varInt))
+        end
+    end
+
+    -- Print byte analysis
+    print("\nByte analysis:")
+    buffer:reset()
+    local byteCount = 0
     
-    -- Add raw hex dump
-    table.insert(output, "\nRaw hex dump:")
-    local hexDump = {}
-    for i, b in ipairs(totalBytes) do
-        table.insert(hexDump, string.format("%02X", b))
-        if i % 16 == 0 then
-            table.insert(hexDump, "\n")
+    while true do
+        local byte = buffer:readByte()
+        if not byte then break end
+        byteCount = byteCount + 1
+        
+        local hexByte, char = buffer:formatByte(byte)
+        local prefix = string.format("Byte %3d: %s  Bits: %s  Char: %s", 
+            byteCount,
+            hexByte,
+            buffer:getBitPattern(byte),
+            char
+        )
+        
+        -- Color based on byte type
+        if byte < 0x20 then
+            printc(255, 0, 255, 255, prefix)  -- Control bytes in purple
+        elseif byte <= 0x7E then
+            printc(0, 255, 0, 255, prefix)    -- ASCII in green
+        elseif byte >= 0xC0 and byte <= 0xF7 then
+            printc(255, 0, 0, 255, prefix)    -- UTF-8 lead bytes in red
+        elseif byte >= 0x80 then
+            printc(0, 0, 255, 255, prefix)    -- UTF-8 continuation bytes in blue
         else
-            table.insert(hexDump, " ")
+            print(prefix)                      -- Default white
         end
     end
-    table.insert(output, table.concat(hexDump))
     
-    return table.concat(output, "\n")
+    -- Print hex dump with color legend
+    print("\nHex dump with color coding:")
+    printc(255, 0, 255, 255, "- Purple: Control bytes (0x00-0x1F)")
+    printc(0, 255, 0, 255, "- Green: ASCII text (0x20-0x7E)")
+    printc(255, 0, 0, 255, "- Red: UTF-8 lead bytes")
+    printc(0, 0, 255, 255, "- Blue: UTF-8 continuation bytes")
+    
+    print("\nHex dump:")
+    buffer:reset()
+    local hexLine = {}
+    byteCount = 0
+    
+    while true do
+        local byte = buffer:readByte()
+        if not byte then break end
+        byteCount = byteCount + 1
+        
+        if byte < 0x20 then
+            printc(255, 0, 255, 255, string.format("0x%02X ", byte))
+        elseif byte <= 0x7E then
+            printc(0, 255, 0, 255, string.format("0x%02X ", byte))
+        elseif byte >= 0xC0 and byte <= 0xF7 then
+            printc(255, 0, 0, 255, string.format("0x%02X ", byte))
+        elseif byte >= 0x80 then
+            printc(0, 0, 255, 255, string.format("0x%02X ", byte))
+        else
+            print(string.format("0x%02X ", byte))
+        end
+        
+        if byteCount % 16 == 0 then
+            print("")  -- New line every 16 bytes
+        end
+    end
+    print("") -- Final newline
 end
 
 -- Debug hook for messages
