@@ -8,33 +8,33 @@ function bit.rshift(a, b) return math.floor(a / (2 ^ b)) end
 
 -- Message type definitions
 local MESSAGE_DEFS = {
-    [0] = {name = "Geiger", size = 1},
-    [1] = {name = "Train", size = 1},
+    [0] = {name = "Geiger", size = 1},                              -- geiger info data
+    [1] = {name = "Train", size = 1},                               -- train control data
     [2] = {name = "HudText", size = -1},
     [3] = {name = "SayText", size = -1},
     [4] = {name = "SayText2", size = -1},
     [5] = {name = "TextMsg", size = -1},
-    [6] = {name = "ResetHUD", size = 1},
-    [7] = {name = "GameTitle", size = 0},
-    [8] = {name = "ItemPickup", size = -1},
-    [9] = {name = "ShowMenu", size = -1},
-    [10] = {name = "Shake", size = 13},
-    [11] = {name = "Fade", size = 10},
-    [12] = {name = "VGUIMenu", size = -1},
-    [13] = {name = "Rumble", size = 3},
-    [14] = {name = "CloseCaption", size = -1},
-    [15] = {name = "SendAudio", size = -1},
+    [6] = {name = "ResetHUD", size = 1},                            -- called every respawn
+    [7] = {name = "GameTitle", size = 0},                           -- show game title
+    [8] = {name = "ItemPickup", size = -1},                         -- for item history on screen
+    [9] = {name = "ShowMenu", size = -1},                           -- show hud menu
+    [10] = {name = "Shake", size = 13},                             -- shake view
+    [11] = {name = "Fade", size = 10},                              -- fade HUD in/out
+    [12] = {name = "VGUIMenu", size = -1},                          -- Show VGUI menu
+    [13] = {name = "Rumble", size = 3},                             -- Send a rumble to a controller
+    [14] = {name = "CloseCaption", size = -1},                      -- Show a caption (by string id number)(duration in 10th of a second)
+    [15] = {name = "SendAudio", size = -1},                         -- play radion command
     [16] = {name = "VoiceMask", size = 17},
     [17] = {name = "RequestState", size = 0},
-    [18] = {name = "Damage", size = -1},
-    [19] = {name = "HintText", size = -1},
-    [20] = {name = "KeyHintText", size = -1},
+    [18] = {name = "Damage", size = -1},                            -- for HUD damage indicators
+    [19] = {name = "HintText", size = -1},                          -- Displays hint text display
+    [20] = {name = "KeyHintText", size = -1},                       -- Displays hint text display
     [21] = {name = "HudMsg", size = -1},
     [22] = {name = "AmmoDenied", size = 2},
     [23] = {name = "AchievementEvent", size = -1},
     [24] = {name = "UpdateRadar", size = -1},
     [25] = {name = "VoiceSubtitle", size = 3},
-    [26] = {name = "HudNotify", size = 2},
+    [26] = {name = "HudNotify", size = 2},                          -- Type, bForceDisplay
     [27] = {name = "HudNotifyCustom", size = -1},
     [28] = {name = "PlayerStatsUpdate", size = -1},
     [29] = {name = "MapStatsUpdate", size = -1},
@@ -42,8 +42,8 @@ local MESSAGE_DEFS = {
     [31] = {name = "PlayerIgnitedInv", size = 3},
     [32] = {name = "HudArenaNotify", size = 2},
     [33] = {name = "UpdateAchievement", size = -1},
-    [34] = {name = "TrainingMsg", size = -1},
-    [35] = {name = "TrainingObjective", size = -1},
+    [34] = {name = "TrainingMsg", size = -1},                       -- Displays a training message
+    [35] = {name = "TrainingObjective", size = -1},                 -- Displays a training objective
     [36] = {name = "DamageDodged", size = -1},
     [37] = {name = "PlayerJarated", size = 2},
     [38] = {name = "PlayerExtinguished", size = 2},
@@ -57,7 +57,7 @@ local MESSAGE_DEFS = {
     [46] = {name = "VoteStart", size = -1},
     [47] = {name = "VotePass", size = -1},
     [48] = {name = "VoteFailed", size = 2},
-    [49] = {name = "VoteSetup", size = -1},
+    [49] = {name = "VoteSetup", size = -1},                         -- Initiates client-side voting UI
     [50] = {name = "PlayerBonusPoints", size = 3},
     [51] = {name = "RDTeamPointsChanged", size = 4},
     [52] = {name = "SpawnFlyingBird", size = -1},
@@ -67,30 +67,32 @@ local MESSAGE_DEFS = {
     [56] = {name = "MVMPlayerEvent", size = -1},
     [57] = {name = "MVMResetPlayerStats", size = -1},
     [58] = {name = "MVMWaveFailed", size = 0},
-    [59] = {name = "MVMAnnouncement", size = 2},
-    [60] = {name = "MVMPlayerUpgradedEvent", size = 9},
-    [61] = {name = "MVMVictory", size = 2},
-    [62] = {name = "MVMWaveChange", size = 15},
-    [63] = {name = "MVMLocalPlayerUpgradesClear", size = 1},
-    [64] = {name = "MVMLocalPlayerUpgradesValue", size = 6},
-    [65] = {name = "MVMResetPlayerWaveSpendingStats", size = 1},
-    [66] = {name = "MVMLocalPlayerWaveSpendingValue", size = 12},
+    [59] = {name = "MVMAnnouncement", size = 2},                    -- Send an enumerated message
+    [60] = {name = "MVMPlayerUpgradedEvent", size = 9},             -- PlayerIdx(1), WaveIdx(1), ItemDef(2), AttributeDef(2), Quality(1), cost(2)
+    [61] = {name = "MVMVictory", size = 2},                         -- IsKicking(1), time(1) (seconds)
+    [62] = {name = "MVMWaveChange", size = 15},                     -- ServerWaveID(2), deaths(1), damageBot(4), damageGiant(4), damageTank(4)
+    [63] = {name = "MVMLocalPlayerUpgradesClear", size = 1},        -- Count(1)
+    [64] = {name = "MVMLocalPlayerUpgradesValue", size = 6},        -- Class(1), ItemDef(2), Upgrade(1), cost(2)
+    [65] = {name = "MVMResetPlayerWaveSpendingStats", size = 1},    -- Wave(1)
+    [66] = {name = "MVMLocalPlayerWaveSpendingValue", size = 12},   -- PlayerIdx(8), Wave(1), Type(1), Cost(2)
     [67] = {name = "MVMResetPlayerUpgradeSpending", size = -1},
-    [68] = {name = "MVMServerKickTimeUpdate", size = 1},
-    [69] = {name = "PlayerLoadoutUpdated", size = -1},
+    [68] = {name = "MVMServerKickTimeUpdate", size = 1},            -- time(1) (seconds)
+    [69] = {name = "PlayerLoadoutUpdated", size = -1},              
     [70] = {name = "PlayerTauntSoundLoopStart", size = -1},
     [71] = {name = "PlayerTauntSoundLoopEnd", size = -1},
     [72] = {name = "ForcePlayerViewAngles", size = -1},
-    [73] = {name = "BonusDucks", size = 2},
-    [74] = {name = "EOTLDuckEvent", size = 7},
+    [73] = {name = "BonusDucks", size = 2},                         -- ent index, ignoretimer
+    [74] = {name = "EOTLDuckEvent", size = 7},                      -- IsCreated (vs IsPickedUp), ID of Creator, ID of Victim, ID of Toucher, iDuckTeam, Count, IsGolden
     [75] = {name = "PlayerPickupWeapon", size = -1},
-    [76] = {name = "QuestObjectiveCompleted", size = 14},
-    [77] = {name = "SPHapWeapEvent", size = 4},
-    [78] = {name = "HapDmg", size = -1},
-    [79] = {name = "HapPunch", size = -1},
-    [80] = {name = "HapSetDrag", size = -1},
-    [81] = {name = "HapSetConst", size = -1},
-    [82] = {name = "HapMeleeContact", size = 0}
+    [76] = {name = "QuestObjectiveCompleted", size = 14},           -- ItemID(8) + StandardPoints(2) + BonusPoints(2) + ObjectiveDef(2)
+    [77] = {name = "AutoBalanceVolunteer", size = -1},
+    [78] = {name = "AutoBalanceVolunteer_Cancel", size = -1},
+    [79] = {name = "SPHapWeapEvent", size = 4},
+    [80] = {name = "HapDmg", size = -1},
+    [81] = {name = "HapPunch", size = -1},
+    [82] = {name = "HapSetDrag", size = -1},
+    [83] = {name = "HapSetConst", size = -1},
+    [84] = {name = "HapMeleeContact", size = 0}
 }
 
 -- Enhanced BitBuffer implementation
