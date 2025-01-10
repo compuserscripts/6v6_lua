@@ -275,6 +275,12 @@ local state = {
     clientVersion = "1.0.0",
     serverVersion = nil,
     isVersionMismatch = false,
+
+    consoleState = {
+        wasOpen = false,
+        pendingRestore = false,
+        inMainMenu = false,
+    }
 }
 
 -- Function to calculate window height based on current number of items
@@ -1307,17 +1313,17 @@ end
 
 -- Main draw callback
 callbacks.Register("Draw", function()
+    -- Check if we're in main menu
+    state.consoleState.inMainMenu = engine.IsGameUIVisible()
+    
     -- Process any queued responses first
     for i = #responseQueue, 1, -1 do
         local item = responseQueue[i]
         if globals.RealTime() >= item.printTime then
             print(item.text)
-            
-            -- Handle any additional state updates
             if item.onPrint then
                 item.onPrint()
             end
-            
             table.remove(responseQueue, i)
         end
     end
@@ -1326,15 +1332,23 @@ callbacks.Register("Draw", function()
     if state.menuOpen then
         input.SetMouseInputEnabled("false")
         if engine.Con_IsVisible() then
+            state.consoleState.wasOpen = true
             client.Command("hideconsole", 1)
-            conWasOpen = false
         end
     else
-        -- Enable mouse and restore console state when menu is closed
+        -- Enable mouse when menu is closed
         input.SetMouseInputEnabled()
-        if not conWasOpen then
+        
+        -- Handle pending console restore
+        if state.consoleState.wasOpen and not state.consoleState.pendingRestore then
+            state.consoleState.pendingRestore = true
+        end
+        
+        -- Only restore console if we're in main menu and have a pending restore
+        if state.consoleState.pendingRestore and state.consoleState.inMainMenu then
             client.Command("showconsole", 1)
-            conWasOpen = true
+            state.consoleState.pendingRestore = false
+            state.consoleState.wasOpen = false
         end
     end
 
@@ -1342,8 +1356,6 @@ callbacks.Register("Draw", function()
     local currentKeyState = input.IsButtonDown(KEY_DELETE)
     if currentKeyState and not lastKeyState then
         state.menuOpen = not state.menuOpen
-        
-        -- Clear all states when toggling menu
         state.clickStartedInMenu = false
         state.clickStartedInTitleBar = false
         state.clickStartedInScrollbar = false
@@ -1355,13 +1367,11 @@ callbacks.Register("Draw", function()
         if not state.menuOpen then
             refreshConfigs()
         end
-        -- No need for else branch anymore, we use hasSeenMousePress instead
     end
     lastKeyState = currentKeyState
     
-    -- Render menu if open
     if state.menuOpen then
-        updateFont() -- Update font before rendering
+        updateFont()
         renderWindow()
     end
 end)
