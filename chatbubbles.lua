@@ -187,7 +187,8 @@ local function handleChatMessage(msg)
     end
 
     if playerName and chatText then
-        addChatMessage(chatText, playerName, entityIndex, false)
+        local modifiedMessage = chatText:sub(2)
+        addChatMessage(modifiedMessage, playerName, entityIndex, false)
     end
 end
 
