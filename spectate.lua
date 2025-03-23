@@ -6,6 +6,12 @@ local fullscreen_width, fullscreen_height = draw.GetScreenSize()
 
 -- User configurable options
 local infinite_spectate = false -- Set this to true to enable infinite spectate feature
+local hide_player_model = false -- Set this to false to disable the first-person player model invisibility
+
+-- Camera view settings
+local camera_view_mode = "offset" -- "raw" or "offset"
+local forward_offset = 16.5 -- How far forward to offset the camera in "offset" mode
+local upward_offset = 12    -- How far upward to offset the camera in "offset" mode
 
 -- Constants
 local MAX_KILLFEED_ENTRIES = 8
@@ -486,6 +492,12 @@ local function ToggleSpectateLock()
     end
 end
 
+-- Function to toggle hide player model setting
+local function ToggleHidePlayerModel()
+    hide_player_model = not hide_player_model
+    print("Hide player model in first person: " .. (hide_player_model and "ENABLED" or "DISABLED"))
+end
+
 local function HandleMovement()
     local forward = Vector3(0, 0, 0)
     local right = Vector3(0, 0, 0)
@@ -798,342 +810,363 @@ local function DrawSpectatorHUD()
             classIcon,
             iconX,
             iconY,
-            math.floor(iconSize),
-            math.floor(iconSize),
-            0, 0,
-            32, 32,
-            32, 32
-        )
-    end
-    
-    -- Draw health with darker background
-    local healthText = string.format("%d HP", health)
-    local healthW, healthH = draw.GetTextSize(healthText)
-    local healthY = math.floor(fullscreen_height - 100)
-    
-    -- Draw semi-transparent background for health
-    draw.Color(0, 0, 0, 150)
-    draw.FilledRectFade(
-        math.floor(fullscreen_width/2 - healthW/2 - nameBgPadding),
-        healthY - 5,
-        math.floor(fullscreen_width/2 + healthW/2 + nameBgPadding),
-        healthY + healthH + 5,
-        100,
-        50,
-        true
+        math.floor(iconSize),
+        math.floor(iconSize),
+        0, 0,
+        32, 32,
+        32, 32
     )
-    
-    -- Draw health text
-    draw.Color(healthColor.r, healthColor.g, healthColor.b, 255)
-    draw.TextShadow(math.floor(fullscreen_width/2 - healthW/2), healthY, healthText)
+end
 
-    if first_person_mode then
-        draw_crosshair(fullscreen_width/2, fullscreen_height/2, crosshairColor.r, crosshairColor.g, crosshairColor.b, 255)
-    end
+-- Draw health with darker background
+local healthText = string.format("%d HP", health)
+local healthW, healthH = draw.GetTextSize(healthText)
+local healthY = math.floor(fullscreen_height - 100)
+
+-- Draw semi-transparent background for health
+draw.Color(0, 0, 0, 150)
+draw.FilledRectFade(
+    math.floor(fullscreen_width/2 - healthW/2 - nameBgPadding),
+    healthY - 5,
+    math.floor(fullscreen_width/2 + healthW/2 + nameBgPadding),
+    healthY + healthH + 5,
+    100,
+    50,
+    true
+)
+
+-- Draw health text
+draw.Color(healthColor.r, healthColor.g, healthColor.b, 255)
+draw.TextShadow(math.floor(fullscreen_width/2 - healthW/2), healthY, healthText)
+
+if first_person_mode then
+    draw_crosshair(fullscreen_width/2, fullscreen_height/2, crosshairColor.r, crosshairColor.g, crosshairColor.b, 255)
+end
 end
 
 local function HandleCameraControls()
-    local current_time = globals.RealTime()
+local current_time = globals.RealTime()
 
-    -- Add Caps Lock check for cycling friendly players
-    if input.IsButtonPressed(KEY_CAPSLOCK) and current_time - last_key_press > key_delay then
-        CycleFriendlyPlayers()
-        last_key_press = current_time
-        free_camera = false
+-- Add Caps Lock check for cycling friendly players
+if input.IsButtonPressed(KEY_CAPSLOCK) and current_time - last_key_press > key_delay then
+    CycleFriendlyPlayers()
+    last_key_press = current_time
+    free_camera = false
+end
+
+-- Add Mouse1 and Mouse2 checks for cycling all players
+if input.IsButtonPressed(MOUSE_LEFT) and current_time - last_key_press > key_delay then
+    CycleAllPlayers(true)
+    last_key_press = current_time
+    free_camera = false
+end
+
+if input.IsButtonPressed(MOUSE_RIGHT) and current_time - last_key_press > key_delay then
+    CycleAllPlayers(false)
+    last_key_press = current_time
+    free_camera = false
+end
+
+-- Add Shift check for spectate lock (but only if infinite_spectate is enabled)
+if input.IsButtonPressed(KEY_LSHIFT) and current_time - last_key_press > key_delay then
+    ToggleSpectateLock()
+    last_key_press = current_time
+end
+
+if input.IsButtonPressed(KEY_LCONTROL) and current_time - last_key_press > key_delay then
+    persistent_fullscreen = not persistent_fullscreen
+    fullscreen_mode = persistent_fullscreen
+    last_key_press = current_time
+end
+
+if input.IsButtonPressed(KEY_TAB) and current_time - last_key_press > key_delay then
+    if not target_player or not target_player:IsValid() or not target_player:IsAlive() or target_player:IsDormant() then
+        visited_players = {}
     end
+    CycleNextEnemy()
+    last_key_press = current_time
+    free_camera = false
+end
 
-    -- Add Mouse1 and Mouse2 checks for cycling all players
-    if input.IsButtonPressed(MOUSE_LEFT) and current_time - last_key_press > key_delay then
-        CycleAllPlayers(true)
-        last_key_press = current_time
-        free_camera = false
-    end
+if input.IsButtonPressed(KEY_SPACE) and target_player and current_time - last_key_press > key_delay then
+    first_person_mode = not first_person_mode
+    free_camera = false
+    last_key_press = current_time
+end
 
-    if input.IsButtonPressed(MOUSE_RIGHT) and current_time - last_key_press > key_delay then
-        CycleAllPlayers(false)
-        last_key_press = current_time
-        free_camera = false
-    end
-
-    -- Add Shift check for spectate lock (but only if infinite_spectate is enabled)
-    if input.IsButtonPressed(KEY_LSHIFT) and current_time - last_key_press > key_delay then
-        ToggleSpectateLock()
-        last_key_press = current_time
-    end
-
-    if input.IsButtonPressed(KEY_LCONTROL) and current_time - last_key_press > key_delay then
-        persistent_fullscreen = not persistent_fullscreen
-        fullscreen_mode = persistent_fullscreen
-        last_key_press = current_time
-    end
-
-    if input.IsButtonPressed(KEY_TAB) and current_time - last_key_press > key_delay then
-        if not target_player or not target_player:IsValid() or not target_player:IsAlive() or target_player:IsDormant() then
-            visited_players = {}
+if not target_player then
+    camera_angles = own_view_angles
+    camera_position = camera_position + HandleMovement()
+else
+    if not first_person_mode then
+        local moving = input.IsButtonDown(KEY_W) or input.IsButtonDown(KEY_A) or 
+                      input.IsButtonDown(KEY_S) or input.IsButtonDown(KEY_D) or
+                      input.IsButtonDown(KEY_Q) or input.IsButtonDown(KEY_E)
+        
+        if moving and not free_camera then
+            free_camera = true
+            own_view_angles = camera_angles
         end
-        CycleNextEnemy()
-        last_key_press = current_time
-        free_camera = false
     end
 
-    if input.IsButtonPressed(KEY_SPACE) and target_player and current_time - last_key_press > key_delay then
-        first_person_mode = not first_person_mode
+    if first_person_mode then
         free_camera = false
-        last_key_press = current_time
-    end
+        camera_position = target_player:GetAbsOrigin() + target_player:GetPropVector("localdata", "m_vecViewOffset[0]")
+        local pitch = target_player:GetPropFloat("tfnonlocaldata", "m_angEyeAngles[0]") or 0
+        local yaw = target_player:GetPropFloat("tfnonlocaldata", "m_angEyeAngles[1]") or 0
+        camera_angles = EulerAngles(pitch, yaw, 0)
 
-    if not target_player then
-        camera_angles = own_view_angles
-        camera_position = camera_position + HandleMovement()
-    else
-        if not first_person_mode then
-            local moving = input.IsButtonDown(KEY_W) or input.IsButtonDown(KEY_A) or 
-                          input.IsButtonDown(KEY_S) or input.IsButtonDown(KEY_D) or
-                          input.IsButtonDown(KEY_Q) or input.IsButtonDown(KEY_E)
-            
-            if moving and not free_camera then
-                free_camera = true
-                own_view_angles = camera_angles
-            end
-        end
-
-        if first_person_mode then
-            free_camera = false
-            camera_position = target_player:GetAbsOrigin() + target_player:GetPropVector("localdata", "m_vecViewOffset[0]")
-            local pitch = target_player:GetPropFloat("tfnonlocaldata", "m_angEyeAngles[0]") or 0
-            local yaw = target_player:GetPropFloat("tfnonlocaldata", "m_angEyeAngles[1]") or 0
-            camera_angles = EulerAngles(pitch, yaw, 0)
-
-            local forward_offset = 16.5
-            local upward_offset = 12
+        -- Apply offset if configured to use offset mode
+        if camera_view_mode == "offset" then
+            -- Apply forward offset
             local forward_vector = camera_angles:Forward()
-            camera_position = camera_position + forward_vector * forward_offset
-            camera_position = camera_position + Vector3(0, 0, upward_offset)
-        else
-            camera_angles = own_view_angles
-            if free_camera then
-                camera_position = camera_position + HandleMovement()
-            else
-                camera_position = target_player:GetAbsOrigin() + Vector3(0, 0, 64) - camera_angles:Forward() * 100
+            
+            -- Increase forward offset when player is looking down to prevent camera clipping
+            local pitch_factor = 1.0
+            if pitch > 60 then -- Adjust when looking down significantly
+                pitch_factor = 1.0 + ((pitch - 60) / 30) * 7.5 -- Gradually increase offset
             end
+            
+            camera_position = camera_position + forward_vector * (forward_offset * pitch_factor)
+            
+            -- Apply upward offset
+            camera_position = camera_position + Vector3(0, 0, upward_offset)
+        end
+    else
+        camera_angles = own_view_angles
+        if free_camera then
+            camera_position = camera_position + HandleMovement()
+        else
+            camera_position = target_player:GetAbsOrigin() + Vector3(0, 0, 64) - camera_angles:Forward() * 100
         end
     end
 end
+end
 
 callbacks.Register("DrawModel", function(ctx)
-    if not target_player or not first_person_mode or not invisibleMaterial then return end
-    
-    local ent = ctx:GetEntity()
-    if not ent then return end
+if not target_player or not first_person_mode or not invisibleMaterial or not hide_player_model then return end
 
-    if ent == target_player or IsAttachedToTargetPlayer(ent) then
-        ctx:ForcedMaterialOverride(invisibleMaterial)
-    end
+local ent = ctx:GetEntity()
+if not ent then return end
+
+if ent == target_player or IsAttachedToTargetPlayer(ent) then
+    ctx:ForcedMaterialOverride(invisibleMaterial)
+end
 end)
 
 callbacks.Register("CreateMove", function(cmd)
-    local localPlayer = entities.GetLocalPlayer()
-    if localPlayer and localPlayer:IsAlive() then
-        has_spawned_once = true
-    end
+local localPlayer = entities.GetLocalPlayer()
+if localPlayer and localPlayer:IsAlive() then
+    has_spawned_once = true
+end
 
-    if first_person_mode then return end
+if first_person_mode then return end
+
+-- Allow mouse movement in free cam or when in third person with target
+if free_camera or (target_player and not first_person_mode) then
+    local mouse_x = -cmd.mousedx * MOUSE_SENSITIVITY
+    local mouse_y = cmd.mousedy * MOUSE_SENSITIVITY
     
-    -- Allow mouse movement in free cam or when in third person with target
-    if free_camera or (target_player and not first_person_mode) then
-        local mouse_x = -cmd.mousedx * MOUSE_SENSITIVITY
-        local mouse_y = cmd.mousedy * MOUSE_SENSITIVITY
-        
-        own_view_angles.y = own_view_angles.y + mouse_x
-        own_view_angles.x = math.max(-89, math.min(89, own_view_angles.x + mouse_y))
-    end
+    own_view_angles.y = own_view_angles.y + mouse_x
+    own_view_angles.x = math.max(-89, math.min(89, own_view_angles.x + mouse_y))
+end
 end)
 
 callbacks.Register("PostRenderView", function(view)
-    if engine.Con_IsVisible() or engine.IsGameUIVisible() then 
+if engine.Con_IsVisible() or engine.IsGameUIVisible() then 
+    return
+end
+
+if not materials_initialized or not windowed_material or not fullscreen_material then
+    if not InitializeAllMaterials() then
         return
     end
+end
 
-    if not materials_initialized or not windowed_material or not fullscreen_material then
-        if not InitializeAllMaterials() then
-            return
-        end
-    end
-    
-    local localPlayer = entities.GetLocalPlayer()
-    if not localPlayer then return end
-    
-    if localPlayer:IsAlive() then
-        has_spawned_once = true
-        is_in_game = true
-        camera_position = Vector3(0, 0, 0)
-        CleanupState()
-        return
-    end
-    
-    -- Only show spectator window if we've spawned before and are actually in-game
-    if not has_spawned_once or not is_in_game then return end
+local localPlayer = entities.GetLocalPlayer()
+if not localPlayer then return end
 
-    local current_texture = persistent_fullscreen and fullscreen_texture or windowed_texture
-    local current_material = persistent_fullscreen and fullscreen_material or windowed_material
+if localPlayer:IsAlive() then
+    has_spawned_once = true
+    is_in_game = true
+    camera_position = Vector3(0, 0, 0)
+    CleanupState()
+    return
+end
+
+-- Only show spectator window if we've spawned before and are actually in-game
+if not has_spawned_once or not is_in_game then return end
+
+local current_texture = persistent_fullscreen and fullscreen_texture or windowed_texture
+local current_material = persistent_fullscreen and fullscreen_material or windowed_material
+
+if not current_texture or not current_material then return end
+
+if camera_position == Vector3(0, 0, 0) then
+    camera_position = localPlayer:GetAbsOrigin() + Vector3(0, 0, 64)
+    own_view_angles = engine.GetViewAngles()
     
-    if not current_texture or not current_material then return end
-
-    if camera_position == Vector3(0, 0, 0) then
-        camera_position = localPlayer:GetAbsOrigin() + Vector3(0, 0, 64)
-        own_view_angles = engine.GetViewAngles()
-        
-        if last_killer and last_killer:IsValid() and last_killer:IsAlive() and not last_killer:IsDormant() then
-            target_player = last_killer
-            first_person_mode = true
-            free_camera = false
-        else
-            CycleNextEnemy()
-            first_person_mode = true
-            free_camera = false
-        end
-        
-        last_killer = nil
-        fullscreen_mode = persistent_fullscreen
-    end
-
-    -- Clean up invalid target player
-    if target_player and (not target_player:IsValid() or not target_player:IsAlive() or target_player:IsDormant()) then
-        visited_players = {}
-        target_player = nil
+    if last_killer and last_killer:IsValid() and last_killer:IsAlive() and not last_killer:IsDormant() then
+        target_player = last_killer
+        first_person_mode = true
+        free_camera = false
+    else
         CycleNextEnemy()
+        first_person_mode = true
+        free_camera = false
     end
-
-    HandleCameraControls()
-
-    local customView = view
-    customView.origin = camera_position 
-    customView.angles = camera_angles
     
-    if first_person_mode then
-        customView.fov = 120
-    end
+    last_killer = nil
+    fullscreen_mode = persistent_fullscreen
+end
 
-    render.Push3DView(customView, E_ClearFlags.VIEW_CLEAR_COLOR | E_ClearFlags.VIEW_CLEAR_DEPTH, current_texture)
-    render.ViewDrawScene(true, true, customView)
-    render.PopView()
-    
-    local render_x = fullscreen_mode and 0 or camera_x_position
-    local render_y = fullscreen_mode and 0 or camera_y_position
-    local render_width = fullscreen_mode and fullscreen_width or camera_width
-    local render_height = fullscreen_mode and fullscreen_height or camera_height
+-- Clean up invalid target player
+if target_player and (not target_player:IsValid() or not target_player:IsAlive() or target_player:IsDormant()) then
+    visited_players = {}
+    target_player = nil
+    CycleNextEnemy()
+end
 
-    render.DrawScreenSpaceRectangle(
-        current_material,
-        render_x, render_y, 
-        render_width, render_height,
-        0, 0, 
-        render_width, render_height,
-        render_width, render_height
-    )
+HandleCameraControls()
+
+local customView = view
+customView.origin = camera_position 
+customView.angles = camera_angles
+
+if first_person_mode then
+    customView.fov = 120
+end
+
+render.Push3DView(customView, E_ClearFlags.VIEW_CLEAR_COLOR | E_ClearFlags.VIEW_CLEAR_DEPTH, current_texture)
+render.ViewDrawScene(true, true, customView)
+render.PopView()
+
+local render_x = fullscreen_mode and 0 or camera_x_position
+local render_y = fullscreen_mode and 0 or camera_y_position
+local render_width = fullscreen_mode and fullscreen_width or camera_width
+local render_height = fullscreen_mode and fullscreen_height or camera_height
+
+render.DrawScreenSpaceRectangle(
+    current_material,
+    render_x, render_y, 
+    render_width, render_height,
+    0, 0, 
+    render_width, render_height,
+    render_width, render_height
+)
 end)
 
 callbacks.Register("Draw", function()
-    if engine.Con_IsVisible() or engine.IsGameUIVisible() then 
-        return
-    end
+if engine.Con_IsVisible() or engine.IsGameUIVisible() then 
+    return
+end
 
-    local localPlayer = entities.GetLocalPlayer()
-    if not localPlayer or not has_spawned_once or not is_in_game then return end
+local localPlayer = entities.GetLocalPlayer()
+if not localPlayer or not has_spawned_once or not is_in_game then return end
+
+if not localPlayer:IsAlive() then
+    if fullscreen_mode then
+        DrawSpectatorHUD()
+        DrawKillfeed()
+        return  -- Early return to skip drawing borders and controls in fullscreen
+    end
     
-    if not localPlayer:IsAlive() then
-        if fullscreen_mode then
-            DrawSpectatorHUD()
-            DrawKillfeed()
-            return  -- Early return to skip drawing borders and controls in fullscreen
-        end
-        
-        -- Only draw borders and controls in windowed mode
-        draw.Color(235, 64, 52, 255)
-        draw.OutlinedRect(
-            math.floor(camera_x_position), 
-            math.floor(camera_y_position), 
-            math.floor(camera_x_position + camera_width),
-            math.floor(camera_y_position + camera_height)
-        )
-        
-        draw.OutlinedRect(
-            math.floor(camera_x_position), 
-            math.floor(camera_y_position - 20),
-            math.floor(camera_x_position + camera_width), 
-            math.floor(camera_y_position)
-        )
-        draw.Color(130, 26, 17, 255)
-        draw.FilledRect(
-            math.floor(camera_x_position + 1), 
-            math.floor(camera_y_position - 19),
-            math.floor(camera_x_position + camera_width - 1), 
-            math.floor(camera_y_position - 1)
-        )
-        
-        draw.SetFont(title_font)
-        draw.Color(255, 255, 255, 255)
-        local text = "Enemy Spectator"
-        if target_player then
-            local playerName = target_player:GetName()
-            if playerName then
-                text = text .. " - " .. playerName
-                if first_person_mode then
-                    text = text .. " (First Person)"
-                elseif free_camera then
-                    text = text .. " (Free Camera)"
-                end
+    -- Only draw borders and controls in windowed mode
+    draw.Color(235, 64, 52, 255)
+    draw.OutlinedRect(
+        math.floor(camera_x_position), 
+        math.floor(camera_y_position), 
+        math.floor(camera_x_position + camera_width),
+        math.floor(camera_y_position + camera_height)
+    )
+    
+    draw.OutlinedRect(
+        math.floor(camera_x_position), 
+        math.floor(camera_y_position - 20),
+        math.floor(camera_x_position + camera_width), 
+        math.floor(camera_y_position)
+    )
+    draw.Color(130, 26, 17, 255)
+    draw.FilledRect(
+        math.floor(camera_x_position + 1), 
+        math.floor(camera_y_position - 19),
+        math.floor(camera_x_position + camera_width - 1), 
+        math.floor(camera_y_position - 1)
+    )
+    
+    draw.SetFont(title_font)
+    draw.Color(255, 255, 255, 255)
+    local text = "Enemy Spectator"
+    if target_player then
+        local playerName = target_player:GetName()
+        if playerName then
+            text = text .. " - " .. playerName
+            if first_person_mode then
+                text = text .. " (First Person)"
+            elseif free_camera then
+                text = text .. " (Free Camera)"
             end
         end
-        
-        local textW, textH = draw.GetTextSize(text)
+    end
+    
+    local textW, textH = draw.GetTextSize(text)
+    draw.Text(
+        math.floor(camera_x_position + camera_width * 0.5 - textW * 0.5),
+        math.floor(camera_y_position - 16), 
+        text
+    )
+    
+    draw.Color(255, 255, 255, 200)
+    local controls = {
+        "Controls:",
+        "Move Mouse - Look around",
+        "Mouse1/Mouse2 - Cycle all players",
+        "WASD - Move camera",
+        "E/Q - Up/Down",
+        "Space - Toggle perspective",
+        "Tab - Cycle enemy players",
+        "CapsLock - Cycle friendly players"
+    }
+    
+    -- Add infinite spectate control only if the feature is enabled
+    if infinite_spectate then
+        table.insert(controls, "Shift - Toggle infinite spectate")
+    else
+        table.insert(controls, "Infinite spectate disabled (edit script to enable)")
+    end
+    
+    table.insert(controls, "Ctrl - Toggle fullscreen")
+    
+    for i, text in ipairs(controls) do
         draw.Text(
-            math.floor(camera_x_position + camera_width * 0.5 - textW * 0.5),
-            math.floor(camera_y_position - 16), 
+            math.floor(camera_x_position + 5),
+            math.floor(camera_y_position + camera_height + 5 + (i-1)*15),
             text
         )
-        
-        draw.Color(255, 255, 255, 200)
-        local controls = {
-            "Controls:",
-            "Move Mouse - Look around",
-            "Mouse1/Mouse2 - Cycle all players",
-            "WASD - Move camera",
-            "E/Q - Up/Down",
-            "Space - Toggle perspective",
-            "Tab - Cycle enemy players",
-            "CapsLock - Cycle friendly players"
-        }
-        
-        -- Add infinite spectate control only if the feature is enabled
-        if infinite_spectate then
-            table.insert(controls, "Shift - Toggle infinite spectate")
-        else
-            table.insert(controls, "Infinite spectate disabled (edit script to enable)")
-        end
-        
-        table.insert(controls, "Ctrl - Toggle fullscreen")
-        
-        for i, text in ipairs(controls) do
-            draw.Text(
-                math.floor(camera_x_position + 5),
-                math.floor(camera_y_position + camera_height + 5 + (i-1)*15),
-                text
-            )
-        end
     end
+
+    -- Draw camera mode info
+    local mode_text = "Camera mode: " .. camera_view_mode
+    local hide_text = "Hide player model: " .. (hide_player_model and "ON" or "OFF")
+    local offset_info_y = math.floor(camera_y_position + camera_height + 5 + (#controls * 15))
+    
+    draw.Text(math.floor(camera_x_position + 5), offset_info_y, mode_text)
+    draw.Text(math.floor(camera_x_position + 5), offset_info_y + 15, hide_text)
+end
 end)
 
 callbacks.Register("FireGameEvent", HandleKillfeedEvent)
 InitializeAllMaterials()
 
 callbacks.Register("Unload", function()
-    CleanupMaterials()
-    CleanupState()
+CleanupMaterials()
+CleanupState()
 end)
 
 -- Print script initialization message
 print("Spectate script loaded!")
+print("Camera mode: " .. camera_view_mode)
+print("Hide player model: " .. (hide_player_model and "ENABLED" or "DISABLED"))
 if not infinite_spectate then
-    print("NOTE: Infinite spectate is disabled. To enable it, edit the script and set 'infinite_spectate = true'")
+print("NOTE: Infinite spectate is disabled. To enable it, edit the script and set 'infinite_spectate = true'")
 end
