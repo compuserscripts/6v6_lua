@@ -58,6 +58,12 @@ local search_interval = 0.5 -- Time between target searches
 local is_camera_visible = true -- Camera visibility toggle state
 local last_key_press = globals.RealTime() -- For debouncing key presses
 
+-- Initialize proper positions based on screen size
+local function InitializePositions()
+    fullscreen_width, fullscreen_height = draw.GetScreenSize()
+    CONFIG.x_position = fullscreen_width - CONFIG.width - 5
+end
+
 -- Initialize fonts
 local function InitializeFonts()
     title_font = draw.CreateFont("Tahoma", 12, 800, FONTFLAG_OUTLINE)
@@ -113,6 +119,21 @@ local function InitializeMaterials()
     
     materials_initialized = true
     return true
+end
+
+-- Function to reset the script when changing servers - NOW DEFINED AFTER THE FUNCTIONS IT CALLS
+local function ResetScript()
+    -- Reset flags and resources
+    materials_initialized = false
+    target_player = nil
+    target_medic = nil
+    
+    -- Force reinitialization
+    InitializePositions()
+    InitializeFonts()
+    InitializeMaterials()
+    
+    print("Enemy Camera: Reset after server change")
 end
 
 -- Get enemy players
@@ -433,16 +454,11 @@ local function HandleGameEvent(event)
         end
     elseif event:GetName() == "game_newmap" then
         is_in_game = true
+        ResetScript()
     elseif event:GetName() == "teamplay_game_over" or 
            event:GetName() == "tf_game_over" then
         is_in_game = false
     end
-end
-
--- Initialize proper positions based on screen size
-local function InitializePositions()
-    fullscreen_width, fullscreen_height = draw.GetScreenSize()
-    CONFIG.x_position = fullscreen_width - CONFIG.width - 5
 end
 
 -- Handle key input to toggle camera visibility
