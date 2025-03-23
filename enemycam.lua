@@ -121,21 +121,6 @@ local function InitializeMaterials()
     return true
 end
 
--- Function to reset the script when changing servers - NOW DEFINED AFTER THE FUNCTIONS IT CALLS
-local function ResetScript()
-    -- Reset flags and resources
-    materials_initialized = false
-    target_player = nil
-    target_medic = nil
-    
-    -- Force reinitialization
-    InitializePositions()
-    InitializeFonts()
-    InitializeMaterials()
-    
-    print("Enemy Camera: Reset after server change")
-end
-
 -- Get enemy players
 local function GetEnemyPlayers()
     local enemy_players = {}
@@ -435,6 +420,23 @@ local function UpdateTargetPlayer()
         target_player, target_medic = FindTargetPlayer()
         target_switch_time = current_time
     end
+end
+
+-- Function to reset the script when changing servers
+-- Modify the ResetScript function to avoid recreating materials if not necessary
+local function ResetScript()
+    -- Reset state variables but don't immediately recreate materials
+    target_player = nil
+    target_medic = nil
+    
+    -- Only reinitialize materials if they're invalid
+    if not materials_initialized then
+        InitializePositions()
+        InitializeFonts()
+        InitializeMaterials()
+    end
+    
+    print("Enemy Camera: Reset after server change")
 end
 
 -- Handle game events

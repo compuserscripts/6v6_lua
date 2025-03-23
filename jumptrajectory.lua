@@ -25,6 +25,7 @@ local vStep = Vector3(0, 0, 0)
 local traceMask = MASK_PLAYERSOLID
 local gravity = 0
 local tickInterval = 0
+local lastTrackedPlayer = nil -- Store the last tracked player to detect changes
 
 -- Impact polygon configuration
 local polygonConfig = {
@@ -189,6 +190,12 @@ local function IsRocketJumping(player)
     return (not IsOnGround(player) and velocity.z > 100) or player:InCond(81)
 end
 
+local function ClearTrajectory()
+    vPath = {}
+    projectileSimulation2 = Vector3(0, 0, 0)
+    hitChance = 0
+end
+
 local function Initialize()
     if initialized then return end
     
@@ -214,6 +221,7 @@ local function Cleanup()
     lastPosition = {}
     priorPrediction = {}
     projectileSimulation2 = Vector3(0, 0, 0)
+    lastTrackedPlayer = nil
     initialized = false
 end
 
@@ -230,9 +238,17 @@ local function OnCreateMove()
     local me = entities.GetLocalPlayer()
     if not me or not me:IsAlive() then return end
 
-    -- Clear old path data
-    vPath = {}
-    projectileSimulation2 = Vector3(0, 0, 0)
+    -- Check if the last tracked player is still valid and rocket jumping
+    if lastTrackedPlayer and (
+       not lastTrackedPlayer:IsValid() or 
+       not lastTrackedPlayer:IsAlive() or 
+       lastTrackedPlayer:IsDormant() or
+       not IsRocketJumping(lastTrackedPlayer) or
+       not IsVisible(lastTrackedPlayer, me)) then
+        -- Player died, became invalid, or stopped rocket jumping - clear trajectory
+        ClearTrajectory()
+        lastTrackedPlayer = nil
+    end
 
     local bestTarget = nil
     local bestDistance = math.huge
@@ -252,6 +268,9 @@ local function OnCreateMove()
     end
 
     if bestTarget then
+        -- Update the last tracked player
+        lastTrackedPlayer = bestTarget
+        
         local origin = bestTarget:GetAbsOrigin()
         local viewOffset = bestTarget:GetPropVector("localdata", "m_vecViewOffset[0]")
         local aimPos = origin + viewOffset
@@ -260,6 +279,8 @@ local function OnCreateMove()
         local lastV = bestTarget:EstimateAbsVelocity()
         local lastG = IsOnGround(bestTarget)
 
+        -- Clear old path data
+        vPath = {}
         vPath[1] = lastP
 
         for i = 1, config.predictionTicks do
@@ -303,6 +324,12 @@ local function OnCreateMove()
                 local hitChance1 = math.abs((lastPosition[playerIdx][currentTick] - priorPrediction[playerIdx][currentTick]):Length())
                 hitChance = math.max(0, 100 - (hitChance1 * 0.5))
             end
+        end
+    else
+        if lastTrackedPlayer then
+            -- No valid target found, and we had a previous target - clear trajectory
+            ClearTrajectory()
+            lastTrackedPlayer = nil
         end
     end
 end
@@ -361,6 +388,33 @@ local function OnDraw()
     end
 end
 
+-- Optimize frequent checks by adding throttling to event handling
+local lastEventCheckTime = 0
+local EVENT_CHECK_INTERVAL = 0.1 -- Check less frequently
+
+local function HandleGameEvent(event)
+    if not initialized or not lastTrackedPlayer then return end
+    
+    local curTime = globals.RealTime()
+    if curTime - lastEventCheckTime < EVENT_CHECK_INTERVAL then
+        return
+    end
+    lastEventCheckTime = curTime
+    
+    if event:GetName() == "player_death" then
+        local victimUserID = event:GetInt("userid")
+        if victimUserID then
+            local victim = entities.GetByUserID(victimUserID)
+            if victim and victim:GetIndex() == lastTrackedPlayer:GetIndex() then
+                -- Our tracked player died, clear trajectory
+                ClearTrajectory()
+                lastTrackedPlayer = nil
+            end
+        end
+    end
+end
+
 callbacks.Register("CreateMove", "PathVisualization.CreateMove", OnCreateMove)
 callbacks.Register("Draw", "PathVisualization.Draw", OnDraw)
+callbacks.Register("FireGameEvent", "PathVisualization.GameEvent", HandleGameEvent)
 callbacks.Register("Unload", Cleanup)
