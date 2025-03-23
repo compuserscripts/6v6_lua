@@ -546,12 +546,17 @@ local function IsTargetWithinRange(target, stickyPos)
     if not target or not target:IsValid() or target:IsDormant() then return false end
     
     local targetPos = target:GetAbsOrigin()
-    local distance = (targetPos - stickyPos):Length()
+    if not targetPos or not stickyPos then return false end
+    
+    -- Use SubtractVectors to safely handle nil values
+    local delta = SubtractVectors(targetPos, stickyPos)
+    local distance = delta:Length()
     return distance <= STICKY_CHAMS_DISTANCE
 end
 
 -- Register draw model callback for chams
 callbacks.Register("DrawModel", function(ctx)
+    if not IsDemoman() then return end
     if not current_sticky or not current_target or not chamsMaterial then return end
     
     local entity = ctx:GetEntity()
@@ -560,7 +565,7 @@ callbacks.Register("DrawModel", function(ctx)
     -- Only apply chams to our current target
     if entity == current_target then
         local stickyPos = current_sticky:GetAbsOrigin()
-        if IsTargetWithinRange(current_target, stickyPos) then
+        if stickyPos and IsTargetWithinRange(current_target, stickyPos) then
             ctx:ForcedMaterialOverride(chamsMaterial)
         end
     end
@@ -568,6 +573,7 @@ end)
 
 -- Update the Draw callback to show correct counts
 callbacks.Register("Draw", function()
+    if not IsDemoman() then return end
     if not current_sticky or not current_target then return end
     
     DrawStickyRangeWarning()
@@ -582,7 +588,7 @@ callbacks.Register("Draw", function()
     for _, sticky in ipairs(stickies) do
         if sticky and sticky:IsValid() and not sticky:IsDormant() then
             local vel = sticky:EstimateAbsVelocity()
-            if vel:Length() < 1 then
+            if vel and vel:Length() < 1 then
                 available_count = available_count + 1
             end
         end
@@ -652,7 +658,11 @@ callbacks.Register("PostRenderView", function(view)
     local customView = view
     local normal = GetStickyNormal(current_sticky)
     local stickyPos = current_sticky:GetAbsOrigin()
+    if not stickyPos then return end
+    
     local cameraOrigin = CalculateCameraOffset(stickyPos, normal)
+    if not cameraOrigin then return end
+    
     customView.origin = cameraOrigin
     customView.angles = smoothed_angles
 
@@ -702,18 +712,32 @@ callbacks.Register("Draw", function()
     
     draw.SetFont(font)
     draw.Color(255, 255, 255, 255)
-    local playerName = current_target:GetName() or "Unknown"
-    local timeRemaining = math.max(0, TARGET_LOCK_DURATION - (globals.RealTime() - target_lock_time))
-    local targetStatus = target_visible and "Tracking" or "Target Lost"
-    local title = string.format("Sticky Security Camera - %s: %s (%.1fs) [%d/%d]", 
-        targetStatus, playerName, timeRemaining, #visited_stickies, #stickies)
     
-    local w, h = draw.GetTextSize(title)
-    draw.Text(
-        math.floor(camera_x_position + camera_width * 0.5 - w * 0.5),
-        math.floor(camera_y_position - 16),
-        title
-    )
+    -- Make sure we have a valid target
+    if current_target:IsValid() then
+        local playerName = current_target:GetName() or "Unknown"
+        local timeRemaining = math.max(0, TARGET_LOCK_DURATION - (globals.RealTime() - target_lock_time))
+        local targetStatus = target_visible and "Tracking" or "Target Lost"
+        
+        -- Count valid stickies to avoid incorrect counts
+        local valid_stickies = 0
+        for _, sticky in ipairs(stickies) do
+            if sticky and sticky:IsValid() and not sticky:IsDormant() then
+                valid_stickies = valid_stickies + 1
+            end
+        end
+        
+        local title = string.format("Sticky Security Camera - %s: %s (%.1fs) [%d/%d]", 
+            targetStatus, playerName, timeRemaining, 
+            math.min(#visited_stickies, valid_stickies), valid_stickies)
+        
+        local w, h = draw.GetTextSize(title)
+        draw.Text(
+            math.floor(camera_x_position + camera_width * 0.5 - w * 0.5),
+            math.floor(camera_y_position - 16),
+            title
+        )
+    end
 end)
 
 callbacks.Register("DrawModel", function(ctx)
@@ -721,9 +745,10 @@ callbacks.Register("DrawModel", function(ctx)
     if not current_sticky or not invisibleMaterial then return end
     
     local ent = ctx:GetEntity()
-    if not ent then return end
+    if not ent or not ent:IsValid() then return end
 
-    if ent == current_sticky then
+    -- Make sure current_sticky is still valid before comparing
+    if current_sticky:IsValid() and ent == current_sticky then
         ctx:ForcedMaterialOverride(invisibleMaterial)
     end
 end)

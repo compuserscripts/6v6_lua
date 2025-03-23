@@ -11,7 +11,7 @@ LoadScript(path .. [[\trails.lua ]])
 LoadScript(path .. [[\uber.lua ]])
 LoadScript(path .. [[\hiders.lua ]])
 LoadScript(path .. [[\focusfire.lua ]])
-LoadScript(path .. [[\arrow.lua ]])
+--LoadScript(path .. [[\arrow.lua ]])
 LoadScript(path .. [[\spectate.lua ]])
 --disabled due to potential fps drain. counterproductive in comp lol
 --LoadScript(path .. [[\nohats.lua ]])
@@ -26,6 +26,7 @@ LoadScript(path .. [[\chatbubbles.lua ]])
 --LoadScript(path .. [[\betterscope.lua ]])
 --not ready for general use
 --LoadScript(path .. [[\pipepredict.lua ]])
+LoadScript(path .. [[\enemycam.lua ]])
 
 callbacks.Register("Unload", function()
     UnloadScript(path .. [[\ammo.lua ]])

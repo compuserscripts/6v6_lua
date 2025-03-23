@@ -4,6 +4,9 @@ local camera_width = 500
 local camera_height = 300
 local fullscreen_width, fullscreen_height = draw.GetScreenSize()
 
+-- User configurable options
+local infinite_spectate = false -- Set this to true to enable infinite spectate feature
+
 -- Constants
 local MAX_KILLFEED_ENTRIES = 8
 
@@ -463,15 +466,23 @@ end
 
 -- Function to toggle spectate lock
 local function ToggleSpectateLock()
+    -- Only allow toggle if the infinite_spectate feature is enabled
+    if not infinite_spectate then
+        print("Infinite spectate feature is disabled. Set infinite_spectate = true in the script to enable it.")
+        return
+    end
+    
     if not spectate_locked then
         StoreCurrentClass()
         client.Command("menuopen", true)
         spectate_locked = true
+        print("Infinite spectate: ENABLED")
     else
         if stored_class then
             client.Command("join_class " .. stored_class, true)
         end
         spectate_locked = false
+        print("Infinite spectate: DISABLED")
     end
 end
 
@@ -844,7 +855,7 @@ local function HandleCameraControls()
         free_camera = false
     end
 
-    -- Add Shift check for spectate lock
+    -- Add Shift check for spectate lock (but only if infinite_spectate is enabled)
     if input.IsButtonPressed(KEY_LSHIFT) and current_time - last_key_press > key_delay then
         ToggleSpectateLock()
         last_key_press = current_time
@@ -1091,10 +1102,17 @@ callbacks.Register("Draw", function()
             "E/Q - Up/Down",
             "Space - Toggle perspective",
             "Tab - Cycle enemy players",
-            "CapsLock - Cycle friendly players",
-            "Shift - Toggle infinite spectate",
-            "Ctrl - Toggle fullscreen"
+            "CapsLock - Cycle friendly players"
         }
+        
+        -- Add infinite spectate control only if the feature is enabled
+        if infinite_spectate then
+            table.insert(controls, "Shift - Toggle infinite spectate")
+        else
+            table.insert(controls, "Infinite spectate disabled (edit script to enable)")
+        end
+        
+        table.insert(controls, "Ctrl - Toggle fullscreen")
         
         for i, text in ipairs(controls) do
             draw.Text(
@@ -1113,3 +1131,9 @@ callbacks.Register("Unload", function()
     CleanupMaterials()
     CleanupState()
 end)
+
+-- Print script initialization message
+print("Spectate script loaded!")
+if not infinite_spectate then
+    print("NOTE: Infinite spectate is disabled. To enable it, edit the script and set 'infinite_spectate = true'")
+end
