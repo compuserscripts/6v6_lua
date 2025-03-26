@@ -279,14 +279,6 @@ local function FindNearestVisiblePlayer(position)
             local playerPos = player:GetAbsOrigin()
             local dist = (playerPos - position):Length()
             
-            -- Debug each potential target
-            local playerScreenPos = client.WorldToScreen(playerPos)
-            if playerScreenPos then
-                draw.Color(255, 255, 0, 255)
-                draw.FilledRect(playerScreenPos[1]-2, playerScreenPos[2]-2,
-                              playerScreenPos[1]+2, playerScreenPos[2]+2)
-            end
-            
             if dist < nearestDist and CheckPlayerVisibility(position, player) then
                 nearest = player
                 nearestDist = dist
@@ -401,8 +393,6 @@ local function CycleNextSticky()
             end
         end
     end
-
-    print(string.format("Available stickies: %d, Total stickies: %d", #available_stickies, #stickies)) -- Debug print
     
     if #available_stickies == 0 then
         current_sticky = nil
@@ -428,13 +418,10 @@ local function CycleNextSticky()
         end
     end
     
-    print(string.format("Unvisited stickies: %d, Visited stickies: %d", #unvisited_stickies, #visited_stickies)) -- Debug print
-    
     -- Reset if all stickies visited
     if #unvisited_stickies == 0 then
         visited_stickies = {}
         unvisited_stickies = available_stickies
-        print("Reset visited stickies list") -- Debug print
     end
     
     if #unvisited_stickies > 0 then
@@ -443,7 +430,6 @@ local function CycleNextSticky()
         current_target = nil
         target_visible = false
         target_lock_time = 0
-        print("Cycled to next sticky") -- Debug print
     end
 end
 
@@ -451,7 +437,6 @@ local function UpdateUserInput()
     local current_time = globals.RealTime()
     
     if input.IsButtonPressed(KEY_TAB) and current_time - last_key_press > key_delay then
-        print("TAB pressed, cycling stickies")
         CycleNextSticky()
         last_key_press = current_time
         return true
@@ -569,15 +554,18 @@ callbacks.Register("DrawModel", function(ctx)
             ctx:ForcedMaterialOverride(chamsMaterial)
         end
     end
+    
+    -- Make the current sticky invisible
+    if entity == current_sticky and invisibleMaterial then
+        ctx:ForcedMaterialOverride(invisibleMaterial)
+    end
 end)
 
--- Update the Draw callback to show correct counts
 callbacks.Register("Draw", function()
     if not IsDemoman() then return end
     if not current_sticky or not current_target then return end
     
     DrawStickyRangeWarning()
-    LogStickyDormantDistance()
     
     local playerName = current_target:GetName() or "Unknown"
     local timeRemaining = math.max(0, TARGET_LOCK_DURATION - (globals.RealTime() - target_lock_time))
@@ -599,6 +587,8 @@ callbacks.Register("Draw", function()
         math.min(#visited_stickies, available_count), available_count)
         
     local w, h = draw.GetTextSize(title)
+    draw.Color(255, 255, 255, 255)
+    draw.SetFont(font)
     draw.Text(
         math.floor(camera_x_position + camera_width * 0.5 - w * 0.5),
         math.floor(camera_y_position - 16),
@@ -611,6 +601,30 @@ callbacks.Register("Draw", function()
         math.floor(camera_x_position + 5),
         math.floor(camera_y_position + camera_height + 5),
         "TAB - Cycle stickies"
+    )
+    
+    -- Draw camera outline
+    draw.Color(235, 64, 52, 255)
+    draw.OutlinedRect(
+        camera_x_position,
+        camera_y_position,
+        camera_x_position + camera_width,
+        camera_y_position + camera_height
+    )
+    
+    draw.OutlinedRect(
+        camera_x_position,
+        camera_y_position - 20,
+        camera_x_position + camera_width,
+        camera_y_position
+    )
+    
+    draw.Color(130, 26, 17, 255)
+    draw.FilledRect(
+        camera_x_position + 1,
+        camera_y_position - 19,
+        camera_x_position + camera_width - 1,
+        camera_y_position - 1
     )
 end)
 
@@ -644,7 +658,7 @@ callbacks.Register("CreateMove", function(cmd)
     end
 end)
 
--- Update PostRenderView to use new camera positioning
+-- Update PostRenderView to use correct ViewSetup
 callbacks.Register("PostRenderView", function(view)
     if not IsDemoman() then return end
     if not materials_initialized and not InitializeMaterials() then
@@ -655,7 +669,6 @@ callbacks.Register("PostRenderView", function(view)
         return 
     end
     
-    local customView = view
     local normal = GetStickyNormal(current_sticky)
     local stickyPos = current_sticky:GetAbsOrigin()
     if not stickyPos then return end
@@ -663,6 +676,8 @@ callbacks.Register("PostRenderView", function(view)
     local cameraOrigin = CalculateCameraOffset(stickyPos, normal)
     if not cameraOrigin then return end
     
+    -- Create a proper ViewSetup object
+    local customView = view
     customView.origin = cameraOrigin
     customView.angles = smoothed_angles
 
@@ -683,80 +698,6 @@ callbacks.Register("PostRenderView", function(view)
     )
 end)
 
-callbacks.Register("Draw", function()
-    if not IsDemoman() then return end
-    if not current_sticky or not current_target then return end
-    
-    draw.Color(235, 64, 52, 255)
-    draw.OutlinedRect(
-        camera_x_position,
-        camera_y_position,
-        camera_x_position + camera_width,
-        camera_y_position + camera_height
-    )
-    
-    draw.OutlinedRect(
-        camera_x_position,
-        camera_y_position - 20,
-        camera_x_position + camera_width,
-        camera_y_position
-    )
-    
-    draw.Color(130, 26, 17, 255)
-    draw.FilledRect(
-        camera_x_position + 1,
-        camera_y_position - 19,
-        camera_x_position + camera_width - 1,
-        camera_y_position - 1
-    )
-    
-    draw.SetFont(font)
-    draw.Color(255, 255, 255, 255)
-    
-    -- Make sure we have a valid target
-    if current_target:IsValid() then
-        local playerName = current_target:GetName() or "Unknown"
-        local timeRemaining = math.max(0, TARGET_LOCK_DURATION - (globals.RealTime() - target_lock_time))
-        local targetStatus = target_visible and "Tracking" or "Target Lost"
-        
-        -- Count valid stickies to avoid incorrect counts
-        local valid_stickies = 0
-        for _, sticky in ipairs(stickies) do
-            if sticky and sticky:IsValid() and not sticky:IsDormant() then
-                valid_stickies = valid_stickies + 1
-            end
-        end
-        
-        local title = string.format("Sticky Security Camera - %s: %s (%.1fs) [%d/%d]", 
-            targetStatus, playerName, timeRemaining, 
-            math.min(#visited_stickies, valid_stickies), valid_stickies)
-        
-        local w, h = draw.GetTextSize(title)
-        draw.Text(
-            math.floor(camera_x_position + camera_width * 0.5 - w * 0.5),
-            math.floor(camera_y_position - 16),
-            title
-        )
-    end
-end)
-
-callbacks.Register("DrawModel", function(ctx)
-    if not IsDemoman() then return end
-    if not current_sticky or not invisibleMaterial then return end
-    
-    local ent = ctx:GetEntity()
-    if not ent or not ent:IsValid() then return end
-
-    -- Make sure current_sticky is still valid before comparing
-    if current_sticky:IsValid() and ent == current_sticky then
-        ctx:ForcedMaterialOverride(invisibleMaterial)
-    end
-end)
-
--- Initialize materials when script loads
-InitializeMaterials()
-InitializeChams()
-
 callbacks.Register("Unload", function()
     materials_initialized = false
     stickies = {}
@@ -772,3 +713,7 @@ callbacks.Register("Unload", function()
     stickyCameraMaterial = nil
     chamsMaterial = nil
 end)
+
+-- Initialize materials when script loads
+InitializeMaterials()
+InitializeChams()

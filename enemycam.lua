@@ -2,6 +2,7 @@
 -- Creates a camera window in the upper right corner that shows enemy players
 -- By default shows the view of the player on the enemy team who is being healed by a medic
 -- Config options for alternative views
+-- Optimized version
 
 -- Configuration
 local CONFIG = {
@@ -40,55 +41,61 @@ local CONFIG = {
 }
 
 -- State variables
-local camera_texture = nil
-local camera_material = nil
-local invisible_material = nil
-local materials_initialized = false
-local target_player = nil
-local target_medic = nil
-local target_switch_time = 0
-local last_death_time = 0
-local killer_entity = nil
-local fullscreen_width, fullscreen_height = 0, 0
-local draw_font = nil
-local title_font = nil
-local is_in_game = false
-local last_search_time = 0
-local search_interval = 0.5 -- Time between target searches
-local is_camera_visible = true -- Camera visibility toggle state
-local last_key_press = globals.RealTime() -- For debouncing key presses
+local camera_state = {
+    materials_initialized = false,
+    camera_texture = nil,
+    camera_material = nil,
+    invisible_material = nil,
+    is_camera_visible = true, -- Camera visibility toggle state
+    target_player = nil,
+    target_medic = nil,
+    target_switch_time = 0,
+    killer_entity = nil,
+    last_death_time = 0,
+    last_search_time = 0,
+    last_key_press = globals.RealTime(),
+    draw_font = nil,
+    title_font = nil,
+    fullscreen_width = 0,
+    fullscreen_height = 0,
+    is_in_game = false
+}
+
+-- Search interval for finding new targets (seconds)
+local SEARCH_INTERVAL = 0.5
 
 -- Initialize proper positions based on screen size
 local function InitializePositions()
-    fullscreen_width, fullscreen_height = draw.GetScreenSize()
-    CONFIG.x_position = fullscreen_width - CONFIG.width - 5
+    camera_state.fullscreen_width, camera_state.fullscreen_height = draw.GetScreenSize()
+    CONFIG.x_position = camera_state.fullscreen_width - CONFIG.width - 5
 end
 
 -- Initialize fonts
 local function InitializeFonts()
-    title_font = draw.CreateFont("Tahoma", 12, 800, FONTFLAG_OUTLINE)
-    draw_font = draw.CreateFont("Tahoma", 11, 400, FONTFLAG_OUTLINE)
+    camera_state.title_font = draw.CreateFont("Tahoma", 12, 800, FONTFLAG_OUTLINE)
+    camera_state.draw_font = draw.CreateFont("Tahoma", 11, 400, FONTFLAG_OUTLINE)
 end
 
 -- Initialize materials for rendering
 local function InitializeMaterials()
-    if materials_initialized then return true end
-    
-    -- Clean up any existing materials first
-    if camera_texture then
-        camera_texture = nil
+    -- Skip if already initialized or camera is hidden
+    if camera_state.materials_initialized or not camera_state.is_camera_visible then 
+        return camera_state.materials_initialized
     end
     
+    -- Clean up any existing materials first
+    --CleanupMaterials()
+    
     -- Create texture
-    camera_texture = materials.CreateTextureRenderTarget("enemyCamTexture", CONFIG.width, CONFIG.height)
-    if not camera_texture then
+    camera_state.camera_texture = materials.CreateTextureRenderTarget("enemyCamTexture", CONFIG.width, CONFIG.height)
+    if not camera_state.camera_texture then
         print("Failed to create camera texture")
         return false
     end
     
     -- Create material using the texture
     local materialName = "enemyCamTexture"
-    camera_material = materials.Create("enemyCamMaterial", string.format([[
+    camera_state.camera_material = materials.Create("enemyCamMaterial", string.format([[
         UnlitGeneric
         {
             $basetexture    "%s"
@@ -96,29 +103,40 @@ local function InitializeMaterials()
             $nofog          1
         }
     ]], materialName))
-    if not camera_material then
+    if not camera_state.camera_material then
         print("Failed to create camera material")
-        if camera_texture then
-            camera_texture = nil
-        end
+        --CleanupMaterials()
         return false
     end
     
     -- Create invisible material for hiding player models
-    invisible_material = materials.Create("enemyCam_invisible_material", [[
+    camera_state.invisible_material = materials.Create("enemyCam_invisible_material", [[
         VertexLitGeneric
         {
-            $basetexture    "vgui/white"
+            $basetexture    "vgui/white_additive"
             $no_draw        1
         }
     ]])
-    if not invisible_material then
+    if not camera_state.invisible_material then
         print("Failed to create invisible material")
+        --CleanupMaterials()
         return false
     end
     
-    materials_initialized = true
+    camera_state.materials_initialized = true
+    print("Enemy Camera: Materials initialized")
     return true
+end
+
+-- Clean up materials to prevent memory leaks
+local function CleanupMaterials()
+    if camera_state.camera_texture then
+        camera_state.camera_texture = nil
+    end
+    
+    camera_state.camera_material = nil
+    camera_state.invisible_material = nil
+    camera_state.materials_initialized = false
 end
 
 -- Get enemy players
@@ -155,11 +173,11 @@ local function FindTargetPlayer()
     if #enemy_players == 0 then return nil end
     
     -- Special case: follow your killer after death
-    if CONFIG.follow_killer > 0 and killer_entity and 
-       globals.CurTime() - last_death_time < CONFIG.follow_killer then
+    if CONFIG.follow_killer > 0 and camera_state.killer_entity and 
+       globals.CurTime() - camera_state.last_death_time < CONFIG.follow_killer then
         
-        if killer_entity:IsValid() and killer_entity:IsAlive() and not killer_entity:IsDormant() then
-            return killer_entity, nil
+        if camera_state.killer_entity:IsValid() and camera_state.killer_entity:IsAlive() and not camera_state.killer_entity:IsDormant() then
+            return camera_state.killer_entity, nil
         end
     end
     
@@ -285,22 +303,9 @@ local function GetTeamColor(team_num)
     end
 end
 
--- Check if an entity is attached to the target player
-local function IsAttachedToTargetPlayer(entity)
-    if not target_player or not entity then return false end
-    
-    local moveChild = target_player:GetMoveChild()
-    while moveChild do
-        if moveChild == entity then return true end
-        moveChild = moveChild:GetMovePeer()
-    end
-    
-    return false
-end
-
 -- Draw camera borders and info
 local function DrawCameraOverlay()
-    if not target_player then return end
+    if not camera_state.target_player then return end
     
     if CONFIG.show_border then
         -- Draw outer border
@@ -332,17 +337,17 @@ local function DrawCameraOverlay()
     
     if CONFIG.show_info then
         -- Draw title with player info
-        draw.SetFont(title_font)
+        draw.SetFont(camera_state.title_font)
         draw.Color(255, 255, 255, 255)
         
-        local player_name = target_player:GetName() or "Unknown"
-        local player_class = GetClassName(target_player:GetPropInt("m_iClass"))
+        local player_name = camera_state.target_player:GetName() or "Unknown"
+        local player_class = GetClassName(camera_state.target_player:GetPropInt("m_iClass"))
         
         local title_text = string.format("%s (%s)", player_name, player_class)
         
         -- If we have a medic, show that info too
-        if target_medic then
-            local medic_name = target_medic:GetName() or "Unknown"
+        if camera_state.target_medic then
+            local medic_name = camera_state.target_medic:GetName() or "Unknown"
             title_text = string.format("%s + Medic: %s", title_text, medic_name)
         end
         
@@ -358,16 +363,14 @@ local function DrawCameraOverlay()
         )
         
         -- Draw player health info
-        draw.SetFont(draw_font)
-        local health = target_player:GetHealth() or 0  -- Add nil check with default value
-        local max_health = target_player:GetMaxHealth() or 100  -- Add nil check with default value
+        draw.SetFont(camera_state.draw_font)
+        local health = camera_state.target_player:GetHealth() or 0
+        local max_health = camera_state.target_player:GetMaxHealth() or 100
         
-        -- Add nil check for health calculation
+        -- Calculate health percentage safely
         local health_percent = 0
         if health > 0 and max_health > 0 then
             health_percent = health / max_health
-        else
-            health_percent = 0
         end
         
         -- Health color (green to red)
@@ -396,45 +399,42 @@ local function UpdateTargetPlayer()
     local current_time = globals.CurTime()
     
     -- Only search for new targets periodically to avoid performance impact
-    if current_time - last_search_time < search_interval then
+    if current_time - camera_state.last_search_time < SEARCH_INTERVAL then
         return
     end
     
-    last_search_time = current_time
+    camera_state.last_search_time = current_time
     
     -- Check if we need to find a new target
     local need_new_target = false
     
     -- If no current target or it's invalid
-    if not target_player or not target_player:IsValid() or not target_player:IsAlive() or target_player:IsDormant() then
+    if not camera_state.target_player or not camera_state.target_player:IsValid() or 
+       not camera_state.target_player:IsAlive() or camera_state.target_player:IsDormant() then
         need_new_target = true
     end
     
     -- If we have a target and it's time to switch
-    if target_player and CONFIG.track_time > 0 and current_time - target_switch_time >= CONFIG.track_time then
+    if camera_state.target_player and CONFIG.track_time > 0 and 
+       current_time - camera_state.target_switch_time >= CONFIG.track_time then
         need_new_target = true
     end
     
     -- Find new target if needed
     if need_new_target then
-        target_player, target_medic = FindTargetPlayer()
-        target_switch_time = current_time
+        camera_state.target_player, camera_state.target_medic = FindTargetPlayer()
+        camera_state.target_switch_time = current_time
     end
 end
 
 -- Function to reset the script when changing servers
--- Modify the ResetScript function to avoid recreating materials if not necessary
 local function ResetScript()
-    -- Reset state variables but don't immediately recreate materials
-    target_player = nil
-    target_medic = nil
+    -- Reset target states
+    camera_state.target_player = nil
+    camera_state.target_medic = nil
     
-    -- Only reinitialize materials if they're invalid
-    if not materials_initialized then
-        InitializePositions()
-        InitializeFonts()
-        InitializeMaterials()
-    end
+    -- Clean up resources
+    --CleanupMaterials()
     
     print("Enemy Camera: Reset after server change")
 end
@@ -448,18 +448,18 @@ local function HandleGameEvent(event)
         local victim = entities.GetByUserID(event:GetInt("userid"))
         if victim and local_player:GetIndex() == victim:GetIndex() then
             -- We died, record time and killer
-            last_death_time = globals.CurTime()
+            camera_state.last_death_time = globals.CurTime()
             local attacker_id = event:GetInt("attacker")
             if attacker_id and attacker_id > 0 then
-                killer_entity = entities.GetByUserID(attacker_id)
+                camera_state.killer_entity = entities.GetByUserID(attacker_id)
             end
         end
     elseif event:GetName() == "game_newmap" then
-        is_in_game = true
+        camera_state.is_in_game = true
         ResetScript()
     elseif event:GetName() == "teamplay_game_over" or 
            event:GetName() == "tf_game_over" then
-        is_in_game = false
+        camera_state.is_in_game = false
     end
 end
 
@@ -470,50 +470,44 @@ local function CheckKeyToggle()
         local current_time = globals.RealTime()
         
         -- Debounce to prevent multiple toggles with one key press
-        if current_time - last_key_press > 0.2 then
-            is_camera_visible = not is_camera_visible
-            last_key_press = current_time
+        if current_time - camera_state.last_key_press > 0.2 then
+            camera_state.is_camera_visible = not camera_state.is_camera_visible
+            camera_state.last_key_press = current_time
             
             -- Print status message
-            if is_camera_visible then
+            if camera_state.is_camera_visible then
                 print("Enemy Camera: Visible")
             else
                 print("Enemy Camera: Hidden")
+                -- Clean up resources when camera is hidden
+                --CleanupMaterials()
             end
         end
     end
 end
 
--- Main render function
-callbacks.Register("PostRenderView", function(view)
-    -- Always check for key toggle regardless of visibility
-    CheckKeyToggle()
+-- Handle camera rendering
+local function RenderCameraView(view)
+    -- Skip if no target player
+    if not camera_state.target_player then return end
     
-    -- Don't show if console or game UI is visible, or toggle is off
-    if engine.Con_IsVisible() or engine.IsGameUIVisible() or not is_camera_visible then 
+    -- Skip if target player is not valid
+    if not camera_state.target_player:IsValid() then
+        camera_state.target_player = nil
         return
     end
     
-    -- Initialize materials if needed
-    if not materials_initialized and not InitializeMaterials() then
-        return
-    end
-    
-    -- Update target player
-    UpdateTargetPlayer()
-    
-    -- Don't render if no target
-    if not target_player then return end
-    
+    -- Start with the player's view
     local player_view = view
     
     -- Get player eye position
-    local eye_pos = target_player:GetAbsOrigin() + target_player:GetPropVector("localdata", "m_vecViewOffset[0]")
+    local eye_pos = camera_state.target_player:GetAbsOrigin() + 
+                   camera_state.target_player:GetPropVector("localdata", "m_vecViewOffset[0]")
     player_view.origin = eye_pos
     
     -- Get player eye angles
-    local pitch = target_player:GetPropFloat("tfnonlocaldata", "m_angEyeAngles[0]") or 0
-    local yaw = target_player:GetPropFloat("tfnonlocaldata", "m_angEyeAngles[1]") or 0
+    local pitch = camera_state.target_player:GetPropFloat("tfnonlocaldata", "m_angEyeAngles[0]") or 0
+    local yaw = camera_state.target_player:GetPropFloat("tfnonlocaldata", "m_angEyeAngles[1]") or 0
     local eye_angles = EulerAngles(pitch, yaw, 0)
     player_view.angles = eye_angles
     
@@ -535,24 +529,49 @@ callbacks.Register("PostRenderView", function(view)
     end
     
     -- Render the camera view
-    render.Push3DView(player_view, E_ClearFlags.VIEW_CLEAR_COLOR | E_ClearFlags.VIEW_CLEAR_DEPTH, camera_texture)
+    render.Push3DView(player_view, E_ClearFlags.VIEW_CLEAR_COLOR | E_ClearFlags.VIEW_CLEAR_DEPTH, camera_state.camera_texture)
     render.ViewDrawScene(true, true, player_view)
     render.PopView()
     
     -- Draw the camera on screen
     render.DrawScreenSpaceRectangle(
-        camera_material,
+        camera_state.camera_material,
         CONFIG.x_position, CONFIG.y_position,
         CONFIG.width, CONFIG.height,
         0, 0,
         CONFIG.width, CONFIG.height,
         CONFIG.width, CONFIG.height
     )
+end
+
+-- Main PostRenderView function
+callbacks.Register("PostRenderView", function(view)
+    -- Always check for key toggle regardless of visibility
+    CheckKeyToggle()
+    
+    -- Skip rendering if conditions aren't met
+    if engine.Con_IsVisible() or engine.IsGameUIVisible() or not camera_state.is_camera_visible then 
+        return
+    end
+    
+    -- Initialize materials if needed (and camera is visible)
+    if not camera_state.materials_initialized then
+        if not InitializeMaterials() then
+            return
+        end
+    end
+    
+    -- Update the target player
+    UpdateTargetPlayer()
+    
+    -- Render the camera view
+    RenderCameraView(view)
 end)
 
 -- Draw overlay information
 callbacks.Register("Draw", function()
-    if engine.Con_IsVisible() or engine.IsGameUIVisible() or not is_camera_visible then 
+    -- Skip rendering if conditions aren't met
+    if engine.Con_IsVisible() or engine.IsGameUIVisible() or not camera_state.is_camera_visible then 
         return
     end
     
@@ -564,19 +583,11 @@ callbacks.Register("FireGameEvent", HandleGameEvent)
 
 -- Clean up resources when script is unloaded
 callbacks.Register("Unload", function()
-    materials_initialized = false
-    target_player = nil
-    target_medic = nil
-    
-    if camera_texture then
-        camera_texture = nil
-    end
-    
-    camera_material = nil
-    invisible_material = nil
+    --CleanupMaterials()
+    camera_state.target_player = nil
+    camera_state.target_medic = nil
 end)
 
 -- Initialize everything
 InitializePositions()
 InitializeFonts()
-InitializeMaterials()

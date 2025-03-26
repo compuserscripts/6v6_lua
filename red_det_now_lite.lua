@@ -23,7 +23,7 @@ local function InitializeChams()
             "UnlitGeneric"
             {
                 "$basetexture" "vgui/white_additive"
-                "$color2" "[1 0 0]"
+                "$color2" "[0.5 0 1]"
             }
         ]])
     end
@@ -209,9 +209,8 @@ callbacks.Register("Draw", function()
     draw.Color(255, 255, 255, 255)
     draw.Text(10, 10, string.format("Active Stickies: %d", validCount))
     
-    -- Draw targets count
-    local targets = GetAllNearbyTargets()
-    draw.Color(255, 50, 50, 255)
+    -- Draw targets count - also change this color to match purple theme
+    draw.Color(128, 0, 255, 255)
     draw.Text(10, 25, string.format("Targets in Range: %d", #targets))
 end)
 

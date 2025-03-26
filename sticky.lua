@@ -1,4 +1,4 @@
-local enemy_only = false
+local enemy_only = true
 local max_dist = 2800 -- hammer units
 
 local box_3d = false  -- Toggle for 3D box ESP

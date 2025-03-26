@@ -11,8 +11,8 @@ local TEXT_CONFIG = {
     
     -- Position
     POSITION = {
-        X_OFFSET = 20,  -- Distance from right edge of screen
-        Y_OFFSET = 20   -- Distance from top of screen
+        X_OFFSET = 120,  -- Distance from right edge of screen
+        Y_OFFSET = 120   -- Distance from top of screen
     },
     
     -- The actual warning text
